@@ -2,6 +2,8 @@ const App = (() => {
   const DOW_ORDER = [1,2,3,4,5,6,0]; // Mon..Sun
   const DOW_LABEL = { 1:'M',2:'T',3:'W',4:'T',5:'F',6:'S',0:'S' };
   const PATTERN_ICON = { squat:'◧', hinge:'◩', lunge:'◪', pushH:'▲', pushV:'▴', pull:'◂', core:'●', carry:'➜', cardio:'✦' };
+  const PHASE_ICON = { rest:'○', transition:'➜', warmup:'✦', cooldown:'✦' };
+  const PHASE_LABEL = { work:'WORK', rest:'REST', warmup:'WARM-UP', cooldown:'COOL-DOWN', transition:'GET READY' };
 
   let session = null;   // active player session
   let timerId = null;
@@ -25,6 +27,9 @@ const App = (() => {
     sec = Math.max(0, Math.round(sec));
     const m = Math.floor(sec / 60), s = sec % 60;
     return String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+  }
+  function escapeHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
   }
 
   // ---------------- INIT ----------------
@@ -212,15 +217,24 @@ const App = (() => {
   function renderPlanPreview(workout) {
     const el = $('planPreview'); el.innerHTML = '';
     if (!workout) return;
+    const isCircuit = workout.type === 'circuit';
     const items = [
-      ...workout.warmup.map(w => ({ name: w.name, meta: 'Warm-up · ' + w.duration + 's', icon: '○' })),
-      ...workout.blocks.map(b => ({ name: b.name, meta: b.sets + (b.timeBased ? ' rounds · ' + b.duration + 's' : ' sets · ' + b.reps), icon: PATTERN_ICON[b.pattern] || '●' })),
-      ...workout.cooldown.map(c => ({ name: c.name, meta: 'Cool-down · ' + c.duration + 's', icon: '○' })),
+      ...workout.warmup.map(w => ({ name: w.name, meta: 'Warm-up · ' + w.duration + 's', icon: '○', images: w.images })),
+      ...workout.blocks.map(b => ({
+        name: b.name,
+        meta: b.sets + (isCircuit ? ' rounds · ' : ' sets · ') + (b.timeBased ? b.duration + 's' : b.reps),
+        icon: PATTERN_ICON[b.pattern] || '●',
+        images: b.images,
+      })),
+      ...workout.cooldown.map(c => ({ name: c.name, meta: 'Cool-down · ' + c.duration + 's', icon: '○', images: c.images })),
     ];
     items.forEach(it => {
       const row = document.createElement('div');
       row.className = 'plan-item';
-      row.innerHTML = `<div class="tag">${it.icon}</div><div><div class="name">${it.name}</div><div class="meta">${it.meta}</div></div>`;
+      const tag = (it.images && it.images.length)
+        ? `<div class="tag img"><img src="${it.images[0]}" alt="" loading="lazy"></div>`
+        : `<div class="tag">${it.icon}</div>`;
+      row.innerHTML = `${tag}<div><div class="name">${it.name}</div><div class="meta">${it.meta}</div></div>`;
       el.appendChild(row);
     });
   }
@@ -235,16 +249,66 @@ const App = (() => {
   }
 
   // ---------------- PLAYER ----------------
+  // Builds the full, real step-by-step sequence: every warm-up move, every work set
+  // (timed or rep-based — both get a real running countdown), every rest, a short
+  // "get ready" changeover whenever the move changes, and the cool-down. This mirrors
+  // Generator.estimateMinutes() exactly so the time shown on Home matches reality.
   function buildSteps(workout) {
     const steps = [];
-    workout.warmup.forEach(w => steps.push({ phase:'warmup', name:w.name, cue:w.cue, timeBased:true, duration:w.duration }));
-    workout.blocks.forEach(block => {
-      for (let s=1; s<=block.sets; s++) {
-        steps.push({ phase:'work', name:block.name, cue:block.cue, timeBased:block.timeBased, duration:block.duration, reps:block.reps, setIndex:s, totalSets:block.sets, exerciseId:block.exerciseId });
-        if (s < block.sets) steps.push({ phase:'rest', name:'Rest', timeBased:true, duration: block.restSec });
-      }
+    const T = workout.transitionSec || 15;
+
+    function transition(next) {
+      steps.push({
+        phase:'transition', name:'Get ready', nextName: next.name,
+        cue:`Up next: ${next.name}. Take a breath and get into position.`,
+        images: next.images || [], pattern: next.pattern,
+        timeBased:true, duration:T,
+      });
+    }
+    function workStep(block, setIndex, totalSets) {
+      return {
+        phase:'work', name:block.name, cue:block.cue, pattern:block.pattern,
+        images: block.images || [], steps: block.steps || [],
+        timeBased: block.timeBased, duration: block.workSec,
+        reps: block.reps, setIndex, totalSets, exerciseId: block.exerciseId,
+      };
+    }
+
+    workout.warmup.forEach((w, i) => {
+      steps.push({ phase:'warmup', name:w.name, cue:w.cue, images:w.images||[], steps:w.steps||[], timeBased:true, duration:w.duration });
+      if (i < workout.warmup.length - 1) transition(workout.warmup[i+1]);
     });
-    workout.cooldown.forEach(c => steps.push({ phase:'cooldown', name:c.name, cue:c.cue, timeBased:true, duration:c.duration }));
+    if (workout.warmup.length && workout.blocks.length) transition(workout.blocks[0]);
+
+    if (workout.type === 'circuit' && workout.blocks.length) {
+      const rounds = workout.blocks[0].sets;
+      for (let r = 1; r <= rounds; r++) {
+        workout.blocks.forEach((block, i) => {
+          steps.push(workStep(block, r, rounds));
+          const lastInRound = i === workout.blocks.length - 1;
+          if (lastInRound && r < rounds) {
+            steps.push({ phase:'rest', name:'Rest before next round', cue:'Shake it out, sip some water — next round starts soon.', timeBased:true, duration: block.restSec });
+          } else if (!lastInRound) {
+            transition(workout.blocks[i+1]);
+          }
+        });
+      }
+    } else {
+      workout.blocks.forEach((block, bi) => {
+        for (let s=1; s<=block.sets; s++) {
+          steps.push(workStep(block, s, block.sets));
+          if (s < block.sets) steps.push({ phase:'rest', name:'Rest', cue:'Catch your breath, shake it out.', timeBased:true, duration: block.restSec });
+        }
+        if (bi < workout.blocks.length - 1) transition(workout.blocks[bi+1]);
+      });
+    }
+
+    if (workout.blocks.length && workout.cooldown.length) transition(workout.cooldown[0]);
+    workout.cooldown.forEach((c, i) => {
+      steps.push({ phase:'cooldown', name:c.name, cue:c.cue, images:c.images||[], steps:c.steps||[], timeBased:true, duration:c.duration });
+      if (i < workout.cooldown.length - 1) transition(workout.cooldown[i+1]);
+    });
+
     return steps;
   }
 
@@ -262,9 +326,11 @@ const App = (() => {
     if (!step) return finishWorkout();
 
     $('playerProgress').style.width = Math.round((session.idx / session.steps.length) * 100) + '%';
-    $('playerPhase').textContent = step.phase === 'work' ? 'WORK' : step.phase.toUpperCase();
+    $('playerPhase').textContent = PHASE_LABEL[step.phase] || step.phase.toUpperCase();
     $('playerName').textContent = step.name;
-    $('playerCue').textContent = step.cue || (step.phase === 'rest' ? 'Catch your breath, shake it out.' : '');
+
+    renderExerciseMedia(step);
+    renderExerciseInstructions(step);
 
     const pips = $('playerPips'); pips.innerHTML = '';
     if (step.phase === 'work') {
@@ -275,17 +341,70 @@ const App = (() => {
       }
     }
 
-    if (step.timeBased) {
-      session.remaining = step.duration;
-      $('playerTimer').textContent = fmtTime(session.remaining);
-      $('playerSub').textContent = step.phase === 'rest' ? 'resting' : 'tap start when ready';
+    const repsBadge = $('playerRepsBadge');
+    if (step.phase === 'work' && !step.timeBased && step.reps) {
+      repsBadge.style.display = 'inline-flex';
+      repsBadge.textContent = `Aim for ${step.reps} reps`;
+    } else {
+      repsBadge.style.display = 'none';
+    }
+
+    // Every step — timed or rep-based — now gets a real running countdown.
+    session.remaining = step.duration;
+    $('playerTimer').textContent = fmtTime(session.remaining);
+    $('playerSub').textContent = subLabel(step);
+    if (step.phase === 'rest' || step.phase === 'transition') {
+      // Nothing to "get ready" for here — rest and changeovers just flow automatically.
+      startTimer();
+    } else {
       $('playerActionBtn').textContent = 'Start';
       session.running = false;
-    } else {
-      $('playerTimer').textContent = step.reps || '—';
-      $('playerSub').textContent = `set ${step.setIndex} of ${step.totalSets}`;
-      $('playerActionBtn').textContent = 'Done';
     }
+  }
+
+  function subLabel(step) {
+    if (step.phase === 'rest') return 'resting — catch your breath';
+    if (step.phase === 'transition') return step.nextName ? `next up: ${step.nextName}` : 'get into position';
+    if (step.phase === 'work') return step.timeBased ? `set ${step.setIndex} of ${step.totalSets}` : `set ${step.setIndex} of ${step.totalSets} · finished early? tap Skip`;
+    return 'tap start when ready';
+  }
+
+  function renderExerciseMedia(step) {
+    const wrap = $('playerMedia');
+    const images = step.images || [];
+    if (images.length) {
+      wrap.classList.remove('placeholder');
+      wrap.innerHTML = `<img id="playerMediaImg" src="${images[0]}" alt="${escapeHtml(step.name)}">` +
+        (images.length > 1
+          ? `<div class="media-toggle">
+               <button class="on" onclick="App.setMediaFrame(0)">Start</button>
+               <button onclick="App.setMediaFrame(1)">Finish</button>
+             </div>`
+          : '');
+      session.mediaImages = images;
+    } else {
+      const icon = PATTERN_ICON[step.pattern] || PHASE_ICON[step.phase] || '●';
+      wrap.classList.add('placeholder');
+      wrap.innerHTML = `<div class="media-placeholder-icon">${icon}</div>`;
+      session.mediaImages = null;
+    }
+  }
+
+  function setMediaFrame(i) {
+    if (!session || !session.mediaImages) return;
+    const img = $('playerMediaImg');
+    if (img) img.src = session.mediaImages[i];
+    document.querySelectorAll('#playerMedia .media-toggle button').forEach((b, idx) => b.classList.toggle('on', idx === i));
+  }
+
+  function renderExerciseInstructions(step) {
+    const el = $('playerCue');
+    const howto = step.steps && step.steps.length ? step.steps : null;
+    let html = step.cue ? `<p class="cue-line">${escapeHtml(step.cue)}</p>` : '';
+    if (howto && (step.phase === 'work' || step.phase === 'warmup' || step.phase === 'cooldown')) {
+      html += '<ol class="howto-list">' + howto.map(s => `<li>${escapeHtml(s)}</li>`).join('') + '</ol>';
+    }
+    el.innerHTML = html || '<p>Move at your own pace, focus on good form.</p>';
   }
 
   function startTimer() {
@@ -308,12 +427,9 @@ const App = (() => {
   }
 
   function playerAction() {
-    const step = session.steps[session.idx];
-    if (step.timeBased) {
-      if (session.running) pauseTimer(); else startTimer();
-    } else {
-      advance();
-    }
+    // Every step now runs its own real countdown (reps-based sets included) —
+    // Start/Pause always controls the timer. Skip is there for a set finished early.
+    if (session.running) pauseTimer(); else startTimer();
   }
 
   function playerSkip() { advance(); }
@@ -594,7 +710,7 @@ const App = (() => {
 
   return {
     init, onboardNext, finishOnboarding, toggleSwitch, goto,
-    startWorkout, reroll, playerAction, playerSkip, exitPlayer,
+    startWorkout, reroll, playerAction, playerSkip, exitPlayer, setMediaFrame,
     pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll,
     markManualComplete, checkForUpdates,
     setTodayTime, clearTodayTime, renderSettingsVisibility,

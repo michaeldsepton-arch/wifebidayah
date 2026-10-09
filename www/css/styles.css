@@ -125,6 +125,8 @@ button { font-family: inherit; }
   background: var(--bg-elevated); color: var(--teal);
   display: flex; align-items: center; justify-content: center; font-size: 15px;
 }
+.plan-item .tag.img { padding: 0; overflow: hidden; }
+.plan-item .tag.img img { width: 100%; height: 100%; object-fit: cover; }
 .plan-item .name { font-weight: 600; font-size: 14.5px; }
 .plan-item .meta { font-size: 12.5px; color: var(--fg-faint); margin-top: 1px; }
 
@@ -154,11 +156,35 @@ button { font-family: inherit; }
 .player-head .phase { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--teal); font-weight: 700; }
 .player-head h1 { font-size: 24px; margin-top: 4px; }
 
+.exercise-media {
+  position: relative; width: 100%; aspect-ratio: 16/11; max-height: 230px;
+  border-radius: var(--radius-m); overflow: hidden;
+  background: #0A1B21; border: 1px solid var(--card-border);
+  display: flex; align-items: center; justify-content: center;
+}
+.exercise-media img { width: 100%; height: 100%; object-fit: contain; }
+.exercise-media.placeholder { background: linear-gradient(160deg, var(--bg-elevated), var(--card) 75%); }
+.media-placeholder-icon { font-size: 52px; color: var(--accent); opacity: 0.85; }
+.media-toggle { position: absolute; bottom: 8px; right: 8px; display: flex; gap: 6px; }
+.media-toggle button {
+  background: rgba(14,35,43,0.78); color: var(--fg-dim); border: 1px solid var(--card-border);
+  border-radius: 20px; padding: 5px 12px; font-size: 11px; font-weight: 700;
+}
+.media-toggle button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
 .timer-ring-wrap { display: flex; justify-content: center; padding: 10px 0; }
 .timer-num { font-family: var(--font-display); font-size: 56px; font-variant-numeric: tabular-nums; }
 .timer-sub { text-align: center; color: var(--fg-dim); font-size: 14px; }
 
+.reps-badge {
+  align-self: center; display: inline-flex; font-size: 13px; font-weight: 700;
+  color: var(--accent-ink); background: var(--accent-strong); border-radius: 20px; padding: 6px 14px;
+}
+
 .cue-card { background: var(--bg-elevated); border-radius: var(--radius-m); padding: 16px; font-size: 14.5px; color: var(--fg-dim); border-left: 3px solid var(--accent); }
+.cue-card .cue-line { font-weight: 600; color: var(--fg); margin: 0 0 10px; }
+.cue-card .howto-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; }
+.cue-card .howto-list li { font-size: 13.5px; color: var(--fg-dim); line-height: 1.42; }
 
 .player-controls { display: flex; gap: 10px; }
 .player-controls .btn { flex: 1; }
