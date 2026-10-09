@@ -528,6 +528,36 @@ const App = (() => {
     goto('home');
   }
 
+  function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(String(reader.result).split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  async function downloadAndInstall(url, buildNum, status) {
+    const Filesystem = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Filesystem;
+    const FileOpener = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FileOpener;
+    if (!Filesystem || !FileOpener) {
+      status.textContent = 'Opening the download page…';
+      window.open(url, '_blank');
+      return;
+    }
+    status.textContent = 'Downloading update…';
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('download failed: ' + res.status);
+    const blob = await res.blob();
+    status.textContent = 'Saving…';
+    const base64 = await blobToBase64(blob);
+    const fileName = `bidayah-update-${buildNum}.apk`;
+    const written = await Filesystem.writeFile({ path: fileName, data: base64, directory: 'CACHE' });
+    status.textContent = 'Opening installer…';
+    await FileOpener.open({ filePath: written.uri, contentType: 'application/vnd.android.package-archive' });
+    status.textContent = "Tap Install when Android asks, then reopen Bidayah.";
+  }
+
   async function checkForUpdates() {
     const btn = $('updateBtn'), status = $('updateStatus');
     btn.disabled = true; btn.textContent = 'Checking…';
@@ -537,16 +567,20 @@ const App = (() => {
       if (!res.ok) throw new Error('not reachable');
       const data = await res.json();
       const remoteBuild = parseInt((data.tag_name || '').replace('build-', ''), 10) || 0;
-      if (remoteBuild > APP_BUILD) {
-        status.textContent = `Build ${remoteBuild} is available (you're on ${APP_BUILD}).`;
-        if (confirm(`A new version is available (build ${remoteBuild}). Open the download page now?`)) {
-          window.open(data.html_url || `https://github.com/${UPDATE_REPO}/releases/latest`, '_blank');
-        }
-      } else {
+      if (remoteBuild <= APP_BUILD) {
         status.textContent = "You're on the latest version.";
+        return;
       }
+      const asset = (data.assets || []).find(a => a.name.endsWith('.apk'));
+      if (!asset) { status.textContent = `Build ${remoteBuild} is available, but no APK was attached.`; return; }
+      if (!confirm(`Build ${remoteBuild} is available (you're on ${APP_BUILD}). Download and install now?`)) {
+        status.textContent = `Build ${remoteBuild} available — check again when you're ready.`;
+        return;
+      }
+      await downloadAndInstall(asset.browser_download_url, remoteBuild, status);
     } catch (e) {
-      status.textContent = "Couldn't check for updates — check your connection.";
+      console.warn('update check/install failed', e);
+      status.textContent = "Couldn't update automatically — check your connection and try again.";
     } finally {
       btn.disabled = false; btn.textContent = 'Check for updates';
     }
