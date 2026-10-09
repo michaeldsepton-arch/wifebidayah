@@ -9,7 +9,12 @@ const Store = (() => {
       weeklyTarget: 4,              // sessions per week, flexible 3-4
       preferredDays: [1,2,3,4,5],   // Mon-Fri lean; weekend optional (0=Sun..6=Sat)
       sessionMinutes: 30,
-      reminderTime: '08:00',        // morning check-in
+      reminderTime: '08:00',        // manual fallback when Fajr lookup is off/unavailable
+      useFajrSchedule: true,
+      fajrOffsetMinutes: 30,
+      prayer: { city: 'Red Deer', country: 'Canada', method: 2 }, // method 2 = ISNA
+      cycleMode: false,
+      cycleTime: '11:00',
       alarmEnabled: true,
       alarmTime: '17:30',
       equipment: ['bodyweight','dumbbell','bench','plate','curlbar','table','treadmill'],
@@ -30,6 +35,8 @@ const Store = (() => {
     weightLog: [],
     // currently generated-but-not-yet-done workout, so Home + Player agree
     pendingWorkout: null,
+    // the time she picked today to work out: { date: 'YYYY-MM-DD', time: 'HH:MM' }
+    plannedTime: null,
   };
 
   function load() {

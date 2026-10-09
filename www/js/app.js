@@ -165,6 +165,48 @@ const App = (() => {
     });
 
     renderPlanPreview(state.pendingWorkout);
+    renderTimePickCard(state);
+  }
+
+  function renderTimePickCard(state) {
+    const el = $('timePickCard');
+    const todayKey = Prayer.ymd(new Date());
+    const alreadyDoneToday = state.history.some(h => new Date(h.date).toDateString() === new Date().toDateString());
+    if (alreadyDoneToday) { el.innerHTML = ''; el.style.display = 'none'; return; }
+    el.style.display = 'block';
+
+    const picked = state.plannedTime && state.plannedTime.date === todayKey ? state.plannedTime.time : null;
+    if (picked) {
+      const [h,m] = picked.split(':').map(Number);
+      const label = new Date(2000,0,1,h,m).toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+      el.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between">
+          <div><div class="t-label" style="font-weight:600">Reminder set for ${label}</div><div class="t-sub">We'll nudge you then.</div></div>
+          <button class="link" onclick="App.clearTodayTime()">Change</button>
+        </div>`;
+    } else {
+      el.innerHTML = `
+        <div class="t-label" style="font-weight:600;margin-bottom:8px">What time works today?</div>
+        <div style="display:flex;gap:8px">
+          <input type="time" id="todayTimeInput" style="flex:1">
+          <button class="btn btn-primary btn-sm" onclick="App.setTodayTime()">Remind me</button>
+        </div>`;
+    }
+  }
+
+  function setTodayTime() {
+    const val = $('todayTimeInput').value;
+    if (!val) return;
+    const todayKey = Prayer.ymd(new Date());
+    Store.set(s => { s.plannedTime = { date: todayKey, time: val }; return s; });
+    Notify.scheduleTodayReminder(val);
+    renderHome();
+  }
+
+  function clearTodayTime() {
+    Store.set(s => { s.plannedTime = null; return s; });
+    Notify.cancelTodayReminder();
+    renderHome();
   }
 
   function renderPlanPreview(workout) {
@@ -409,6 +451,13 @@ const App = (() => {
     $('setReminderTime').value = state.settings.reminderTime;
     $('setAlarmTime').value = state.settings.alarmTime;
     $('setAlarmToggle').classList.toggle('on', state.settings.alarmEnabled);
+    $('setFajrToggle').classList.toggle('on', state.settings.useFajrSchedule);
+    $('setPrayerCity').value = state.settings.prayer.city;
+    $('setPrayerCountry').value = state.settings.prayer.country;
+    $('setFajrOffset').value = state.settings.fajrOffsetMinutes;
+    $('setCycleToggle').classList.toggle('on', state.settings.cycleMode);
+    $('setCycleTime').value = state.settings.cycleTime;
+    renderSettingsVisibility();
 
     setDaysSel = state.settings.preferredDays.slice();
     renderDayGrid('setDays', setDaysSel, (d) => { setDaysSel = d; });
@@ -444,6 +493,14 @@ const App = (() => {
     $('updateStatus').textContent = '';
   }
 
+  function renderSettingsVisibility() {
+    const fajrOn = $('setFajrToggle').classList.contains('on');
+    const cycleOn = $('setCycleToggle').classList.contains('on');
+    $('fajrFields').style.display = fajrOn ? 'flex' : 'none';
+    $('manualTimeField').style.display = fajrOn ? 'none' : 'flex';
+    $('cycleTimeField').style.display = cycleOn ? 'flex' : 'none';
+  }
+
   function saveSettings() {
     const equipIds = Array.from($('setEquipment').children)
       .filter(c => c.classList.contains('on')).map(c => c.dataset.id);
@@ -456,6 +513,12 @@ const App = (() => {
       s.settings.reminderTime = $('setReminderTime').value;
       s.settings.alarmTime = $('setAlarmTime').value;
       s.settings.alarmEnabled = $('setAlarmToggle').classList.contains('on');
+      s.settings.useFajrSchedule = $('setFajrToggle').classList.contains('on');
+      s.settings.prayer.city = $('setPrayerCity').value.trim() || 'Red Deer';
+      s.settings.prayer.country = $('setPrayerCountry').value.trim() || 'Canada';
+      s.settings.fajrOffsetMinutes = +$('setFajrOffset').value || 30;
+      s.settings.cycleMode = $('setCycleToggle').classList.contains('on');
+      s.settings.cycleTime = $('setCycleTime').value || '11:00';
       s.settings.equipment = equipIds.length ? equipIds : ['bodyweight'];
       s.settings.excludedExerciseIds = excludedIds;
       s.pendingWorkout = Generator.generate(s);
@@ -500,6 +563,7 @@ const App = (() => {
     startWorkout, reroll, playerAction, playerSkip, exitPlayer,
     pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll,
     markManualComplete, checkForUpdates,
+    setTodayTime, clearTodayTime, renderSettingsVisibility,
   };
 })();
 

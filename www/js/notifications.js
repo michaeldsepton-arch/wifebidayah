@@ -1,8 +1,9 @@
-// Local notification scheduling: morning check-ins + an "alarm" style evening nudge.
-// Re-run refreshSchedule() on every app open/resume so copy reflects current progress.
+// Local notification scheduling: morning check-ins (Fajr-relative or manual),
+// an evening "alarm" nudge, and a one-off reminder for the time she picks each day.
 const Notify = (() => {
   const CHECKIN_BASE_ID = 1000; // + day offset (0..13)
   const ALARM_BASE_ID = 2000;
+  const TODAY_PICK_ID = 3000;
 
   function plugin() {
     return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.LocalNotifications;
@@ -51,8 +52,6 @@ const Notify = (() => {
     return d;
   }
 
-  // Projects a rough week-progress for a future date, assuming only sessions already
-  // logged count (good-enough estimate; corrected for real as she opens the app).
   function projectedRemaining(state, futureDate) {
     const start = Progress.startOfWeek(futureDate);
     const doneInThatWeek = state.history.filter(h => {
@@ -62,6 +61,17 @@ const Notify = (() => {
     return Math.max(state.settings.weeklyTarget - doneInThatWeek, 0);
   }
 
+  // Resolves the morning check-in time for a given future date: cycle override first,
+  // then Fajr + offset (if enabled and known), then the manual fallback time.
+  function resolveMorningTime(state, date, fajrDays) {
+    if (state.settings.cycleMode) return state.settings.cycleTime;
+    if (state.settings.useFajrSchedule) {
+      const fajr = Prayer.fajrFor(date, fajrDays);
+      if (fajr) return Prayer.addMinutes(fajr, state.settings.fajrOffsetMinutes);
+    }
+    return state.settings.reminderTime;
+  }
+
   async function refreshSchedule(state) {
     const LN = plugin();
     if (!LN) return; // running in a plain browser preview — no-op
@@ -69,7 +79,11 @@ const Notify = (() => {
     if (!ok) return;
     await ensureChannel();
 
-    // cancel everything we own, then reschedule fresh from current state
+    let fajrDays = {};
+    if (state.settings.useFajrSchedule && !state.settings.cycleMode) {
+      try { fajrDays = await Prayer.refresh(state); } catch (e) { console.warn('prayer refresh failed', e); }
+    }
+
     try {
       const pending = await LN.getPending();
       const ours = pending.notifications.filter(n => n.id >= 1000 && n.id < 3000).map(n => ({ id: n.id }));
@@ -85,12 +99,13 @@ const Notify = (() => {
       const dow = d.getDay();
       if (!state.settings.preferredDays.includes(dow)) continue;
 
-      const fireAt = dateAt(i, state.settings.reminderTime);
+      const timeStr = resolveMorningTime(state, d, fajrDays);
+      const fireAt = dateAt(i, timeStr);
       if (fireAt < new Date()) continue;
       const remaining = projectedRemaining(state, fireAt);
       const msg = remaining === 0
         ? { title: "You're on track 🎉", body: "This week's sessions are covered — today's optional." }
-        : { title: "Got 30 min today?", body: `${remaining} session${remaining > 1 ? 's' : ''} left this week — today's a good day for one.` };
+        : { title: "Got 30 min today?", body: `${remaining} session${remaining > 1 ? 's' : ''} left this week — tap to pick a time that works today.` };
 
       checkins.push({
         id: CHECKIN_BASE_ID + i, title: msg.title, body: msg.body,
@@ -117,6 +132,32 @@ const Notify = (() => {
     } catch (e) { console.warn('schedule failed', e); }
   }
 
+  // Schedules (or replaces) the single reminder for the time she picked today.
+  async function scheduleTodayReminder(hhmm) {
+    const LN = plugin();
+    if (!LN) return;
+    const ok = await ensurePermission();
+    if (!ok) return;
+    await ensureChannel();
+    try { await LN.cancel({ notifications: [{ id: TODAY_PICK_ID }] }); } catch (e) {}
+    const [h, m] = hhmm.split(':').map(Number);
+    const at = new Date(); at.setHours(h, m, 0, 0);
+    if (at < new Date()) return; // picked a time already past today — nothing to schedule
+    try {
+      await LN.schedule({ notifications: [{
+        id: TODAY_PICK_ID, title: 'Workout time ⏰',
+        body: "You picked this time for today — ready for your 30 minutes?",
+        schedule: { at }, channelId: 'bidayah-alarm', smallIcon: 'ic_stat_bidayah',
+      }] });
+    } catch (e) { console.warn('scheduleTodayReminder failed', e); }
+  }
+
+  async function cancelTodayReminder() {
+    const LN = plugin();
+    if (!LN) return;
+    try { await LN.cancel({ notifications: [{ id: TODAY_PICK_ID }] }); } catch (e) {}
+  }
+
   async function notifyNow(title, body) {
     const LN = plugin();
     if (!LN) return;
@@ -127,5 +168,5 @@ const Notify = (() => {
     } catch (e) { console.warn('notifyNow failed', e); }
   }
 
-  return { ensurePermission, refreshSchedule, notifyNow };
+  return { ensurePermission, refreshSchedule, scheduleTodayReminder, cancelTodayReminder, notifyNow };
 })();
