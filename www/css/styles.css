@@ -180,10 +180,11 @@ button { font-family: inherit; }
 .feedback-options button.selected { border-color: var(--accent); color: var(--accent-strong); background: rgba(225,148,76,0.08); }
 
 /* ---------- Forms ---------- */
-label.field { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; color: var(--fg-dim); }
+label.field { display: flex; flex-direction: column; gap: 6px; font-size: 13.5px; color: var(--fg-dim); min-width: 0; }
 input[type=text], input[type=number], input[type=time], select {
   background: var(--bg-elevated); border: 1.5px solid var(--card-border); color: var(--fg);
   border-radius: var(--radius-s); padding: 11px 12px; font-size: 15px; font-family: inherit;
+  width: 100%; min-width: 0; box-sizing: border-box;
 }
 input:focus, select:focus { outline: none; border-color: var(--accent); }
 

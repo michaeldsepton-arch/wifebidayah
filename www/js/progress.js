@@ -15,9 +15,30 @@ const Progress = (() => {
     return state.history.filter(h => new Date(h.date) >= start).length;
   }
 
+  function stripTime(d) { const c = new Date(d); c.setHours(0,0,0,0); return c; }
+
+  // The full weekly target, unless `forDate` falls in the week she started using the
+  // app — then it's capped to however many preferred days are actually left in that
+  // first, partial week, so she's never chased for sessions she never had time for.
+  function effectiveWeeklyTarget(state, forDate = new Date()) {
+    const target = state.settings.weeklyTarget;
+    if (!state.onboardedAt) return target;
+    const onboardedDate = stripTime(state.onboardedAt);
+    const weekStart = startOfWeek(forDate);
+    if (startOfWeek(onboardedDate).getTime() !== weekStart.getTime()) return target;
+
+    let count = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(weekStart); d.setDate(weekStart.getDate() + i);
+      if (d < onboardedDate) continue;
+      if (state.settings.preferredDays.includes(d.getDay())) count++;
+    }
+    return Math.max(1, Math.min(target, count || target));
+  }
+
   function weekProgress(state) {
     const done = sessionsThisWeek(state);
-    const target = state.settings.weeklyTarget;
+    const target = effectiveWeeklyTarget(state, new Date());
     const start = startOfWeek();
     const today = new Date();
     const todayIdx = today.getDay() === 0 ? 7 : today.getDay(); // 1..7, Mon=1
@@ -91,5 +112,5 @@ const Progress = (() => {
     return { first, last: lastW, delta: Math.round((lastW - first) * 10) / 10 };
   }
 
-  return { startOfWeek, sessionsThisWeek, weekProgress, morningMessage, recordCompletion, logWeight, weightTrend };
+  return { startOfWeek, sessionsThisWeek, weekProgress, effectiveWeeklyTarget, morningMessage, recordCompletion, logWeight, weightTrend };
 })();

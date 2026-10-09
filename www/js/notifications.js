@@ -58,7 +58,8 @@ const Notify = (() => {
       const hd = new Date(h.date);
       return hd >= start && hd <= futureDate;
     }).length;
-    return Math.max(state.settings.weeklyTarget - doneInThatWeek, 0);
+    const target = Progress.effectiveWeeklyTarget(state, futureDate);
+    return Math.max(target - doneInThatWeek, 0);
   }
 
   // Resolves the morning check-in time for a given future date: cycle override first,

@@ -35,10 +35,10 @@
 
     <div class="onboard-step" data-step="3">
       <h1 style="font-size:24px">Reminders</h1>
-      <p style="color:var(--fg-dim);font-size:14px">A morning nudge, plus an evening check-in if the day's session is still open.</p>
-      <label class="field">Morning check-in
-        <input type="time" id="obReminderTime" value="08:00">
-      </label>
+      <div class="card" style="padding:14px">
+        <div class="t-label" style="font-weight:600">Morning check-in: 30 min after Fajr</div>
+        <p class="sub" style="color:var(--fg-faint);font-size:12.5px;margin-top:4px">Calculated for Red Deer, AB (ISNA method). Change the city, the offset, or switch to a fixed time any time in Settings.</p>
+      </div>
       <div class="toggle-row">
         <div><div class="t-label">Evening alarm</div><div class="t-sub">If today's workout isn't done yet</div></div>
         <button class="switch on" id="obAlarmToggle" onclick="App.toggleSwitch(this)"></button>

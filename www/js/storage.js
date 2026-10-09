@@ -4,6 +4,7 @@ const Store = (() => {
 
   const defaultState = {
     onboarded: false,
+    onboardedAt: null, // set once, used to prorate the target for a partial first week
     profile: { name: '' },
     settings: {
       weeklyTarget: 4,              // sessions per week, flexible 3-4

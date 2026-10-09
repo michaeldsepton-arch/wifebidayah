@@ -77,10 +77,10 @@ const App = (() => {
 
   function finishOnboarding() {
     Store.set(s => {
-      s.settings.reminderTime = $('obReminderTime').value || '08:00';
       s.settings.alarmEnabled = $('obAlarmToggle').classList.contains('on');
       s.settings.alarmTime = $('obAlarmTime').value || '17:30';
       s.onboarded = true;
+      s.onboardedAt = new Date().toISOString();
       return s;
     });
     $('onboard').style.display = 'none';
