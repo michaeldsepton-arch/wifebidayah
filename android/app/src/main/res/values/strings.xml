@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bidayah Fitness</string>
+    <string name="title_activity_main">Bidayah Fitness</string>
+    <string name="package_name">com.sepphouse.bidayah</string>
+    <string name="custom_url_scheme">com.sepphouse.bidayah</string>
+</resources>

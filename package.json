@@ -1,0 +1,19 @@
+{
+  "name": "bidayah-fitness",
+  "version": "1.0.0",
+  "description": "Bidayah Fitness — a personal 30-minute workout app",
+  "private": true,
+  "scripts": {
+    "sync": "cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "6.2.0",
+    "@capacitor/core": "6.2.0",
+    "@capacitor/local-notifications": "6.1.1",
+    "@capacitor/preferences": "6.0.3"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "3.0.5",
+    "@capacitor/cli": "6.2.0"
+  }
+}

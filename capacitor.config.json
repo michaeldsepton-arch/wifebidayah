@@ -1,0 +1,9 @@
+{
+  "appId": "com.sepphouse.bidayah",
+  "appName": "Bidayah Fitness",
+  "webDir": "www",
+  "backgroundColor": "#0E232B",
+  "android": {
+    "backgroundColor": "#0E232B"
+  }
+}
