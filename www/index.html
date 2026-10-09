@@ -66,6 +66,7 @@
         <p class="sub" id="homeSub">Loading your plan…</p>
         <div class="week-dots" id="weekDots"></div>
         <button class="btn btn-primary" id="startBtn" onclick="App.startWorkout()">Start today's workout</button>
+        <button class="link" style="align-self:center" onclick="App.markManualComplete()">Did something active today? Mark it done</button>
       </div>
 
       <div class="stat-row">
@@ -129,6 +130,11 @@
         <div class="stat"><div class="n" id="pTotal">0</div><div class="l">sessions</div></div>
       </div>
 
+      <div>
+        <div class="section-head"><h2>Milestones</h2></div>
+        <div class="badge-grid" id="badgeGrid"></div>
+      </div>
+
       <div class="card">
         <div class="section-head" style="margin-bottom:10px"><h2>Weight trend</h2></div>
         <canvas class="sparkline" id="weightChart"></canvas>
@@ -183,7 +189,21 @@
         <div class="chip-wrap" id="setEquipment"></div>
       </div>
 
+      <div class="card">
+        <div class="section-head" style="margin-bottom:4px"><h2>Exercises to skip</h2></div>
+        <p class="sub" style="color:var(--fg-faint);font-size:12.5px;margin-bottom:10px">Tap to exclude any move you'd rather not see — the generator will work around it.</p>
+        <div class="chip-wrap chip-scroll" id="setExclusions"></div>
+      </div>
+
       <button class="btn btn-primary" onclick="App.saveSettings()">Save changes</button>
+
+      <div class="card">
+        <div class="section-head" style="margin-bottom:10px"><h2>About</h2></div>
+        <p class="sub" style="color:var(--fg-dim);font-size:13.5px" id="aboutLine">Bidayah Fitness</p>
+        <button class="btn btn-ghost btn-sm" style="margin-top:12px" onclick="App.checkForUpdates()" id="updateBtn">Check for updates</button>
+        <p class="sub" style="color:var(--fg-faint);font-size:12px;margin-top:8px" id="updateStatus"></p>
+      </div>
+
       <button class="btn btn-danger" onclick="App.resetAll()">Reset all data</button>
     </section>
 
@@ -211,6 +231,7 @@
 
 <script src="js/vendor/capacitor.js"></script>
 <script src="js/vendor/local-notifications.js"></script>
+<script src="js/version.js"></script>
 <script src="js/exercises.js"></script>
 <script src="js/storage.js"></script>
 <script src="js/generator.js"></script>

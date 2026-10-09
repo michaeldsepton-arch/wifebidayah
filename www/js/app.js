@@ -8,6 +8,18 @@ const App = (() => {
   let obDaysSel = [1,2,3,4,5];
   let setDaysSel = [];
 
+  const MILESTONES = [
+    { id:'first', icon:'①', label:'First session', check: s => s.progress.totalSessions >= 1 },
+    { id:'five', icon:'⑤', label:'5 sessions', check: s => s.progress.totalSessions >= 5 },
+    { id:'ten', icon:'⑩', label:'10 sessions', check: s => s.progress.totalSessions >= 10 },
+    { id:'streak7', icon:'🔥', label:'7-day streak', check: s => s.progress.longestStreak >= 7 },
+    { id:'allrounder', icon:'★', label:'Tried every pattern', check: s => {
+      const patterns = new Set(s.history.flatMap(h => h.exerciseIds.map(id => (EXERCISES.find(e=>e.id===id)||{}).pattern)));
+      return ['squat','hinge','lunge','pushH','pushV','pull','core','cardio'].every(p => patterns.has(p));
+    } },
+    { id:'twentyfive', icon:'㉕', label:'25 sessions', check: s => s.progress.totalSessions >= 25 },
+  ];
+
   function $(id) { return document.getElementById(id); }
   function fmtTime(sec) {
     sec = Math.max(0, Math.round(sec));
@@ -171,6 +183,15 @@ const App = (() => {
     });
   }
 
+  function markManualComplete() {
+    if (!confirm("Log today as a completed session? Great for a hike, a class, or anything off-plan.")) return;
+    const state = Store.get();
+    const manualWorkout = { id: 'manual_' + Date.now(), type: 'manual', blocks: [], estMinutes: state.settings.sessionMinutes };
+    Store.set(s => { Progress.recordCompletion(s, manualWorkout, 'good'); s.pendingWorkout = Generator.generate(s); return s; });
+    Notify.refreshSchedule(Store.get());
+    renderHome();
+  }
+
   // ---------------- PLAYER ----------------
   function buildSteps(workout) {
     const steps = [];
@@ -306,6 +327,15 @@ const App = (() => {
       ? `${trend.first} kg → ${trend.last} kg (${trend.delta > 0 ? '+' : ''}${trend.delta} kg since you started logging)`
       : 'Log your weight a couple of times to see a trend.';
 
+    const grid = $('badgeGrid'); grid.innerHTML = '';
+    MILESTONES.forEach(m => {
+      const unlocked = m.check(state);
+      const el = document.createElement('div');
+      el.className = 'badge' + (unlocked ? ' unlocked' : '');
+      el.innerHTML = `<div class="ic">${m.icon}</div><div class="bl">${m.label}</div>`;
+      grid.appendChild(el);
+    });
+
     const list = $('historyList'); list.innerHTML = '';
     const recent = [...state.history].reverse().slice(0, 12);
     if (recent.length === 0) {
@@ -398,11 +428,27 @@ const App = (() => {
       chip.dataset.id = id;
       wrap.appendChild(chip);
     });
+
+    const exWrap = $('setExclusions'); exWrap.innerHTML = '';
+    [...EXERCISES].sort((a,b) => a.name.localeCompare(b.name)).forEach(ex => {
+      const chip = document.createElement('div');
+      const excluded = state.settings.excludedExerciseIds.includes(ex.id);
+      chip.className = 'chip' + (excluded ? ' excluded' : '');
+      chip.textContent = ex.name;
+      chip.dataset.id = ex.id;
+      chip.onclick = () => chip.classList.toggle('excluded');
+      exWrap.appendChild(chip);
+    });
+
+    $('aboutLine').textContent = `Bidayah Fitness · v${APP_VERSION} (build ${APP_BUILD})`;
+    $('updateStatus').textContent = '';
   }
 
   function saveSettings() {
     const equipIds = Array.from($('setEquipment').children)
       .filter(c => c.classList.contains('on')).map(c => c.dataset.id);
+    const excludedIds = Array.from($('setExclusions').children)
+      .filter(c => c.classList.contains('excluded')).map(c => c.dataset.id);
     Store.set(s => {
       s.profile.name = $('setName').value.trim();
       s.settings.weeklyTarget = +$('setTarget').value;
@@ -411,10 +457,36 @@ const App = (() => {
       s.settings.alarmTime = $('setAlarmTime').value;
       s.settings.alarmEnabled = $('setAlarmToggle').classList.contains('on');
       s.settings.equipment = equipIds.length ? equipIds : ['bodyweight'];
+      s.settings.excludedExerciseIds = excludedIds;
+      s.pendingWorkout = Generator.generate(s);
       return s;
     });
     Notify.refreshSchedule(Store.get());
     goto('home');
+  }
+
+  async function checkForUpdates() {
+    const btn = $('updateBtn'), status = $('updateStatus');
+    btn.disabled = true; btn.textContent = 'Checking…';
+    status.textContent = '';
+    try {
+      const res = await fetch(`https://api.github.com/repos/${UPDATE_REPO}/releases/latest`, { cache: 'no-store' });
+      if (!res.ok) throw new Error('not reachable');
+      const data = await res.json();
+      const remoteBuild = parseInt((data.tag_name || '').replace('build-', ''), 10) || 0;
+      if (remoteBuild > APP_BUILD) {
+        status.textContent = `Build ${remoteBuild} is available (you're on ${APP_BUILD}).`;
+        if (confirm(`A new version is available (build ${remoteBuild}). Open the download page now?`)) {
+          window.open(data.html_url || `https://github.com/${UPDATE_REPO}/releases/latest`, '_blank');
+        }
+      } else {
+        status.textContent = "You're on the latest version.";
+      }
+    } catch (e) {
+      status.textContent = "Couldn't check for updates — check your connection.";
+    } finally {
+      btn.disabled = false; btn.textContent = 'Check for updates';
+    }
   }
 
   function resetAll() {
@@ -427,6 +499,7 @@ const App = (() => {
     init, onboardNext, finishOnboarding, toggleSwitch, goto,
     startWorkout, reroll, playerAction, playerSkip, exitPlayer,
     pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll,
+    markManualComplete, checkForUpdates,
   };
 })();
 

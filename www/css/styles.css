@@ -209,6 +209,23 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
 .chip { padding: 9px 14px; border-radius: 20px; background: var(--bg-elevated); border: 1.5px solid var(--card-border); color: var(--fg-dim); font-size: 13px; font-weight: 600; }
 .chip.on { background: var(--teal); border-color: var(--teal); color: #0F1F1C; }
 
+/* ---------- Badges ---------- */
+.badge-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.badge {
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: var(--card); border: 1.5px solid var(--card-border); border-radius: var(--radius-m);
+  padding: 14px 6px; text-align: center;
+}
+.badge .ic { width: 36px; height: 36px; border-radius: 50%; display:flex; align-items:center; justify-content:center; font-size:17px; background: var(--bg-elevated); color: var(--fg-faint); }
+.badge.unlocked { border-color: var(--accent); }
+.badge.unlocked .ic { background: var(--accent); color: var(--accent-ink); }
+.badge .bl { font-size: 11px; color: var(--fg-dim); font-weight: 600; line-height:1.25; }
+.badge.unlocked .bl { color: var(--fg); }
+
+/* ---------- Chip scroll (exercise exclusions) ---------- */
+.chip-scroll { max-height: 220px; overflow-y: auto; padding-right: 2px; }
+.chip.excluded { background: rgba(201,123,106,0.15); border-color: var(--bad); color: var(--bad); text-decoration: line-through; }
+
 /* ---------- Chart ---------- */
 canvas.sparkline { width: 100%; height: 90px; display: block; }
 
