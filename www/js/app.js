@@ -495,10 +495,10 @@ const App = (() => {
 
   function renderSettingsVisibility() {
     const fajrOn = $('setFajrToggle').classList.contains('on');
-    const cycleOn = $('setCycleToggle').classList.contains('on');
     $('fajrFields').style.display = fajrOn ? 'flex' : 'none';
     $('manualTimeField').style.display = fajrOn ? 'none' : 'flex';
-    $('cycleTimeField').style.display = cycleOn ? 'flex' : 'none';
+    // always visible (not just when cycle mode is on) so the default is easy to find and change
+    $('cycleTimeField').style.display = 'flex';
   }
 
   function saveSettings() {
