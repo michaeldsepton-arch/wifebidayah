@@ -8,6 +8,27 @@ const App = (() => {
   const RING_R = 52;
   const RING_CIRC = 2 * Math.PI * RING_R;
 
+  // --- Weight units: everything is stored/computed in kg; these are the only
+  // place display/input gets converted to whatever `settings.units` is set to. ---
+  const KG_PER_LB = 0.45359237;
+  function units() { return (Store.get().settings.units === 'lbs') ? 'lbs' : 'kg'; }
+  function unitLabel() { return units(); }
+  function kgToDisplay(kg) {
+    if (kg == null || isNaN(kg)) return kg;
+    return units() === 'lbs' ? kg / KG_PER_LB : kg;
+  }
+  function displayToKg(val) {
+    if (val == null || isNaN(val)) return val;
+    return units() === 'lbs' ? val * KG_PER_LB : val;
+  }
+  // Rounds for display: whole-ish numbers for lbs (coarser unit), one decimal for kg.
+  function fmtWeight(kg, decimals) {
+    if (kg == null || isNaN(kg)) return '';
+    const v = kgToDisplay(kg);
+    const d = (decimals != null) ? decimals : (units() === 'lbs' ? 0 : 1);
+    return (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toString();
+  }
+
   // Drives the circular progress ring around the countdown: `fraction` is how much
   // of the ring should still be lit (1 = full circle, 0 = empty).
   function updateRing(fraction) {
@@ -26,16 +47,18 @@ const App = (() => {
   let quranQueue = [];
   let quranIdx = 0;
 
+  const ICON_FLAME = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2c1 3-2 4.5-2 7.5a4 4 0 008 0c0-1-.3-2-1-3 1.5.5 3 2.5 3 5.5a6 6 0 11-12 0c0-3 1.5-5 2-6.5C10.5 4.5 11 3 12 2z"/></svg>';
+  const ICON_STAR = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l2.6 5.6 6.1.7-4.5 4.2 1.2 6-5.4-3-5.4 3 1.2-6-4.5-4.2 6.1-.7z"/></svg>';
   const MILESTONES = [
-    { id:'first', icon:'①', label:'First session', check: s => s.progress.totalSessions >= 1 },
-    { id:'five', icon:'⑤', label:'5 sessions', check: s => s.progress.totalSessions >= 5 },
-    { id:'ten', icon:'⑩', label:'10 sessions', check: s => s.progress.totalSessions >= 10 },
-    { id:'streak7', icon:'🔥', label:'7-day streak', check: s => s.progress.longestStreak >= 7 },
-    { id:'allrounder', icon:'★', label:'Tried every pattern', check: s => {
+    { id:'first', icon:'1', label:'First session', check: s => s.progress.totalSessions >= 1 },
+    { id:'five', icon:'5', label:'5 sessions', check: s => s.progress.totalSessions >= 5 },
+    { id:'ten', icon:'10', label:'10 sessions', check: s => s.progress.totalSessions >= 10 },
+    { id:'streak7', icon:ICON_FLAME, label:'7-day streak', check: s => s.progress.longestStreak >= 7 },
+    { id:'allrounder', icon:ICON_STAR, label:'Tried every pattern', check: s => {
       const patterns = new Set(s.history.flatMap(h => h.exerciseIds.map(id => (EXERCISES.find(e=>e.id===id)||{}).pattern)));
       return ['squat','hinge','lunge','pushH','pushV','pull','core','cardio'].every(p => patterns.has(p));
     } },
-    { id:'twentyfive', icon:'㉕', label:'25 sessions', check: s => s.progress.totalSessions >= 25 },
+    { id:'twentyfive', icon:'25', label:'25 sessions', check: s => s.progress.totalSessions >= 25 },
   ];
 
   function $(id) { return document.getElementById(id); }
@@ -168,6 +191,10 @@ const App = (() => {
   }
 
   function toggleSwitch(el) { el.classList.toggle('on'); }
+
+  function setUnits(u) {
+    Array.from($('setUnitsToggle').children).forEach(c => c.classList.toggle('on', c.dataset.id === u));
+  }
 
   function renderDayGrid(containerId, selected, onChange) {
     const el = $(containerId); el.innerHTML = '';
@@ -318,7 +345,7 @@ const App = (() => {
     el.innerHTML = `
       <div><div class="t-label" style="font-weight:600">${label}</div><div class="t-sub">Same day and time keeps your trend accurate.</div></div>
       <div style="display:flex;gap:8px;align-items:center">
-        <input type="number" step="0.1" id="${prefix}WeighInInput" placeholder="kg" style="width:76px">
+        <input type="number" step="0.1" id="${prefix}WeighInInput" placeholder="${unitLabel()}" style="width:76px">
         <button class="btn btn-primary btn-sm" onclick="App.logWeighIn('${prefix}')">Log</button>
       </div>`;
   }
@@ -326,7 +353,7 @@ const App = (() => {
   function logWeighIn(prefix) {
     const v = parseFloat($(prefix + 'WeighInInput').value);
     if (isNaN(v) || v <= 0) return;
-    Store.set(s => Progress.logWeight(s, v));
+    Store.set(s => Progress.logWeight(s, displayToKg(v)));
     Notify.refreshSchedule(Store.get());
     renderHome();
     if ($('screen-progress').classList.contains('active')) renderProgress();
@@ -375,7 +402,7 @@ const App = (() => {
     const wrap = $('detailMedia');
     if (ex.video) {
       wrap.classList.remove('placeholder');
-      wrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${ex.video}?rel=0&modestbranding=1" title="${escapeHtml(ex.name)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+      wrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${ex.video}?rel=0&modestbranding=1&mute=1&loop=1&playlist=${ex.video}" title="${escapeHtml(ex.name)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
     } else if (ex.images && ex.images.length) {
       wrap.classList.remove('placeholder');
       wrap.innerHTML = `<img src="${ex.images[0]}" alt="${escapeHtml(ex.name)}">`;
@@ -430,12 +457,23 @@ const App = (() => {
     openExerciseDetail(step.exerciseId);
   }
 
+  let toastTimer = null;
+  function showToast(msg) {
+    const el = $('toast');
+    if (!el) return;
+    el.textContent = msg;
+    el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  }
+
   function toggleCurrentLiked() {
     const step = session && session.steps[session.idx];
     if (!step || !step.exerciseId) return;
     Store.set(s => Progress.toggleLiked(s, step.exerciseId));
     const liked = !!(Store.get().exercisePrefs[step.exerciseId] || {}).liked;
     $('playerLikeBtn').classList.toggle('on', liked);
+    showToast(liked ? 'Added to favorites — you\'ll see this move more often' : 'Removed from favorites');
   }
 
   // ---------------- PLAYER ----------------
@@ -481,7 +519,8 @@ const App = (() => {
           steps.push(workStep(block, r, rounds));
           const lastInRound = i === workout.blocks.length - 1;
           if (lastInRound && r < rounds) {
-            steps.push({ phase:'rest', name:'Rest before next round', cue:'Shake it out, sip some water — next round starts soon.', timeBased:true, duration: block.restSec });
+            const upNext = workout.blocks[0];
+            steps.push({ phase:'rest', name:'Rest before next round', nextName: upNext.name, cue:'Shake it out, sip some water — next round starts soon.', images: upNext.images||[], video: upNext.video||null, pattern: upNext.pattern, timeBased:true, duration: block.restSec });
           } else if (!lastInRound) {
             transition(workout.blocks[i+1]);
           }
@@ -491,7 +530,7 @@ const App = (() => {
       workout.blocks.forEach((block, bi) => {
         for (let s=1; s<=block.sets; s++) {
           steps.push(workStep(block, s, block.sets));
-          if (s < block.sets) steps.push({ phase:'rest', name:'Rest', cue:'Catch your breath, shake it out.', timeBased:true, duration: block.restSec });
+          if (s < block.sets) steps.push({ phase:'rest', name:'Rest', nextName: block.name, cue:'Catch your breath, shake it out.', images: block.images||[], video: block.video||null, pattern: block.pattern, timeBased:true, duration: block.restSec });
         }
         if (bi < workout.blocks.length - 1) transition(workout.blocks[bi+1]);
       });
@@ -522,6 +561,16 @@ const App = (() => {
     $('playerProgress').style.width = Math.round((session.idx / session.steps.length) * 100) + '%';
     $('playerPhase').textContent = PHASE_LABEL[step.phase] || step.phase.toUpperCase();
     $('playerName').textContent = step.name;
+    $('playerBackBtn').style.visibility = session.idx > 0 ? 'visible' : 'hidden';
+
+    const setIndicator = $('playerSetIndicator');
+    if (step.phase === 'work' && step.totalSets > 1) {
+      const noun = session.workout.type === 'circuit' ? 'Round' : 'Set';
+      setIndicator.textContent = `${noun} ${step.setIndex} of ${step.totalSets}`;
+      setIndicator.style.display = '';
+    } else {
+      setIndicator.style.display = 'none';
+    }
 
     const likeBtn = $('playerLikeBtn');
     if (step.phase === 'work' && step.exerciseId && EXERCISES.some(e => e.id === step.exerciseId)) {
@@ -586,7 +635,9 @@ const App = (() => {
     $('entryExerciseNote').textContent = step.overloadNote
       || (step.reps ? `Aim for ${step.reps} reps.` : 'Enter how many reps you completed.');
     $('entryWeightRow').style.display = step.trackWeight ? 'flex' : 'none';
-    $('entryWeightInput').value = (step.suggestedWeightKg != null) ? step.suggestedWeightKg : '';
+    const lbl = $('entryWeightLabel');
+    if (lbl) lbl.textContent = `Weight (${unitLabel()})`;
+    $('entryWeightInput').value = (step.suggestedWeightKg != null) ? fmtWeight(step.suggestedWeightKg) : '';
     $('entryRepsInput').value = '';
     $('entryRepsInput').placeholder = step.repTarget ? `${step.repTarget} reps` : (step.reps || 'reps');
   }
@@ -594,16 +645,37 @@ const App = (() => {
   function finishSet() {
     const step = session.steps[session.idx];
     const repsVal = parseInt($('entryRepsInput').value, 10);
-    const kgVal = step.trackWeight ? parseFloat($('entryWeightInput').value) : null;
+    const kgVal = step.trackWeight ? displayToKg(parseFloat($('entryWeightInput').value)) : null;
     Store.set(s => Progress.recordSetPerformance(s, step.exerciseId, kgVal, isNaN(repsVal) ? null : repsVal));
     advance();
   }
 
+  // Rest and transition steps have no video/entry form of their own — they're just
+  // time passing. Rather than leave the media box blank (which read as a dead,
+  // broken screen), show a dimmed preview of whatever's coming up next with a
+  // gently pulsing accent so there's always something alive on screen to look at.
+  function renderRestMedia(step) {
+    const wrap = $('playerMedia');
+    const thumb = step.video ? `https://i.ytimg.com/vi/${step.video}/hqdefault.jpg` : (step.images && step.images[0]);
+    const eyebrow = step.phase === 'rest' ? 'Resting' : 'Get ready';
+    const caption = step.nextName ? `Up next: ${escapeHtml(step.nextName)}` : '';
+    const overlay = `<div class="media-rest-overlay"><div class="media-rest-pulse"></div><span class="media-rest-eyebrow">${eyebrow}</span>${caption ? `<span class="media-rest-next">${caption}</span>` : ''}</div>`;
+    if (thumb) {
+      wrap.classList.remove('placeholder');
+      wrap.innerHTML = `<img src="${thumb}" alt="" class="media-rest-bg">${overlay}`;
+    } else {
+      wrap.classList.add('placeholder');
+      wrap.innerHTML = overlay;
+    }
+    session.mediaImages = null;
+  }
+
   function renderExerciseMedia(step) {
     const wrap = $('playerMedia');
+    if (step.phase === 'rest' || step.phase === 'transition') { renderRestMedia(step); return; }
     if (step.video) {
       wrap.classList.remove('placeholder');
-      wrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${step.video}?rel=0&modestbranding=1" title="${escapeHtml(step.name)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+      wrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${step.video}?rel=0&modestbranding=1&mute=1&loop=1&playlist=${step.video}" title="${escapeHtml(step.name)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
       session.mediaImages = null;
       return;
     }
@@ -703,6 +775,17 @@ const App = (() => {
     renderStep();
   }
 
+  // Lets her undo an accidental Skip/Finished-Set tap. Steps back to the previous
+  // step in the sequence and re-renders it fresh (its own timer/entry state resets,
+  // same as landing on any step normally) rather than trying to restore exact
+  // elapsed time, which would be more surprising than useful here.
+  function playerBack() {
+    if (!session || session.idx <= 0) return;
+    clearInterval(timerId); timerId = null;
+    session.idx -= 1;
+    renderStep();
+  }
+
   function exitPlayer() {
     clearInterval(timerId); timerId = null;
     session = null;
@@ -714,6 +797,7 @@ const App = (() => {
     $('feedbackSummary').textContent = `${session.workout.blocks.length} exercises · about ${mins || session.workout.estMinutes} min`;
     document.querySelectorAll('#feedbackOptions button').forEach(b => b.classList.remove('selected'));
     $('feedbackWeight').value = '';
+    $('feedbackWeight').placeholder = unitLabel();
     showScreen('screen-feedback');
   }
 
@@ -726,7 +810,7 @@ const App = (() => {
     const weightVal = parseFloat($('feedbackWeight').value);
     Store.set(s => {
       Progress.recordCompletion(s, session.workout, session.feedback || 'good');
-      if (!isNaN(weightVal) && weightVal > 0) Progress.logWeight(s, weightVal);
+      if (!isNaN(weightVal) && weightVal > 0) Progress.logWeight(s, displayToKg(weightVal));
       s.pendingWorkout = Generator.generate(s);
       return s;
     });
@@ -743,11 +827,13 @@ const App = (() => {
     $('pTotal').textContent = state.progress.totalSessions;
 
     renderWeighInBanner(state, 'p');
+    const qw = $('quickWeight');
+    if (qw) qw.placeholder = `Log today's weight (${unitLabel()})`;
 
     drawSparkline(state.weightLog);
     const trend = Progress.weightTrend(state);
     $('weightDelta').textContent = trend
-      ? `${trend.first} kg → ${trend.last} kg (${trend.delta > 0 ? '+' : ''}${trend.delta} kg over ${trend.weeks}w)`
+      ? `${fmtWeight(trend.first)} ${unitLabel()} → ${fmtWeight(trend.last)} ${unitLabel()} (${trend.delta > 0 ? '+' : ''}${fmtWeight(trend.delta)} ${unitLabel()} over ${trend.weeks}w)`
       : 'Log your weight a couple of times to see a trend.';
 
     renderConsistency(state);
@@ -798,7 +884,8 @@ const App = (() => {
       return;
     }
     const dir = exp.kgPerWeekTrend < 0 ? 'down' : (exp.kgPerWeekTrend > 0 ? 'up' : 'flat');
-    el.textContent = `At your current consistency (${exp.avgPerWeek}/wk, ${exp.consistencyRate}% of target), you're trending ${dir} about ${Math.abs(exp.kgPerWeekTrend)}kg/week — projected ~${exp.projectedWeight}kg in ${exp.weeksAhead} weeks if that keeps up.`;
+    const u = unitLabel();
+    el.textContent = `At your current consistency (${exp.avgPerWeek}/wk, ${exp.consistencyRate}% of target), you're trending ${dir} about ${fmtWeight(Math.abs(exp.kgPerWeekTrend))}${u}/week — projected ~${fmtWeight(exp.projectedWeight)}${u} in ${exp.weeksAhead} weeks if that keeps up.`;
   }
 
   function drawSparkline(log) {
@@ -847,7 +934,7 @@ const App = (() => {
   function quickLogWeight() {
     const v = parseFloat($('quickWeight').value);
     if (isNaN(v) || v <= 0) return;
-    Store.set(s => Progress.logWeight(s, v));
+    Store.set(s => Progress.logWeight(s, displayToKg(v)));
     $('quickWeight').value = '';
     Notify.refreshSchedule(Store.get());
     renderProgress();
@@ -943,6 +1030,9 @@ const App = (() => {
     $('setSoundToggle').classList.toggle('on', state.settings.soundOnFinish);
     $('setVibrateToggle').classList.toggle('on', state.settings.vibrateOnFinish);
     $('setWeighInTime').value = state.settings.weighInTime;
+    Array.from($('setUnitsToggle').children).forEach(c => {
+      c.classList.toggle('on', c.dataset.id === (state.settings.units || 'kg'));
+    });
     renderSettingsVisibility();
 
     setDaysSel = state.settings.preferredDays.slice();
@@ -1013,6 +1103,8 @@ const App = (() => {
       s.settings.excludedExerciseIds = excludedIds;
       s.settings.weighInDay = setWeighInDaySel;
       s.settings.weighInTime = $('setWeighInTime').value || '08:00';
+      const unitsChip = Array.from($('setUnitsToggle').children).find(c => c.classList.contains('on'));
+      s.settings.units = unitsChip ? unitsChip.dataset.id : 'kg';
       s.settings.pauseMode = $('setPauseToggle').classList.contains('on');
       s.settings.soundOnFinish = $('setSoundToggle').classList.contains('on');
       s.settings.vibrateOnFinish = $('setVibrateToggle').classList.contains('on');
@@ -1138,8 +1230,8 @@ const App = (() => {
 
   return {
     init, onboardNext, finishOnboarding, toggleSwitch, goto,
-    startWorkout, reroll, playerAction, playerSkip, exitPlayer, setMediaFrame, finishSet,
-    pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll,
+    startWorkout, reroll, playerAction, playerSkip, playerBack, exitPlayer, setMediaFrame, finishSet,
+    pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll, setUnits,
     markManualComplete, checkForUpdates,
     setTodayTime, clearTodayTime, renderSettingsVisibility, logWeighIn,
     openExerciseDetail, closeExerciseDetail, openCurrentStepDetail, toggleCurrentLiked,

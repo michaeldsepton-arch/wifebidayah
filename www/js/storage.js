@@ -26,6 +26,7 @@ const Store = (() => {
       pauseMode: false,              // "pause program" switch for rest/injury weeks — stops nudges
       soundOnFinish: true,           // play a sound when a timer/set finishes
       vibrateOnFinish: true,
+      units: 'kg',                   // 'kg' or 'lbs' — display/input only, everything is stored in kg
     },
     progress: {
       difficultyTier: 1.0,          // 1.0 - 3.0, floats, scales up with consistency
