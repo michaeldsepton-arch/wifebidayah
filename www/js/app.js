@@ -228,6 +228,24 @@ const App = (() => {
     return Generator.byId(id) || WARMUPS.find(w => w.id === id) || COOLDOWNS.find(c => c.id === id) || null;
   }
 
+  // A workout/session is built once and then persisted (pendingWorkout survives
+  // across app updates until it's completed and regenerated), so its blocks/steps
+  // carry a snapshot of each exercise's video/images taken at generation time. If
+  // we later ship a new video for a move, anyone with an already-generated plan
+  // or session won't see it until that plan is regenerated -- which reads as a
+  // "missing thumbnail even though it has a video" bug. Re-resolving against the
+  // live exercise definition by id, every time we render, keeps media current
+  // regardless of when the plan/session was built or which ladder rung ended up
+  // in rotation. Falls back to whatever was snapshotted if the id can't be found.
+  function freshMedia(id, fallback) {
+    const live = lookupMovement(id);
+    fallback = fallback || {};
+    return {
+      video: (live && live.video) || fallback.video || null,
+      images: (live && live.images && live.images.length) ? live.images : (fallback.images || []),
+    };
+  }
+
   // ---------------- SOUND / VIBRATION ON TIMER FINISH ----------------
   function playFinishSound() {
     const settings = Store.get().settings;
@@ -548,7 +566,8 @@ const App = (() => {
       const row = document.createElement('div');
       row.className = 'plan-item';
       row.style.cursor = 'pointer';
-      const thumbSrc = it.video ? `https://i.ytimg.com/vi/${it.video}/hqdefault.jpg` : (it.images && it.images.length ? it.images[0] : null);
+      const media = freshMedia(it.id, it);
+      const thumbSrc = media.video ? `https://i.ytimg.com/vi/${media.video}/hqdefault.jpg` : (media.images.length ? media.images[0] : null);
       const tag = thumbSrc
         ? `<div class="tag img"><img src="${thumbSrc}" alt="" loading="lazy"></div>`
         : `<div class="tag">${it.icon}</div>`;
@@ -770,7 +789,7 @@ const App = (() => {
           const lastInRound = i === workout.blocks.length - 1;
           if (lastInRound && r < rounds) {
             const upNext = workout.blocks[0];
-            steps.push({ phase:'rest', name:'Rest before next round', nextName: upNext.name, cue:'Shake it out, sip some water — next round starts soon.', images: upNext.images||[], video: upNext.video||null, pattern: upNext.pattern, timeBased:true, duration: block.restSec });
+            steps.push({ phase:'rest', name:'Rest before next round', nextName: upNext.name, nextId: upNext.exerciseId, cue:'Shake it out, sip some water — next round starts soon.', images: upNext.images||[], video: upNext.video||null, pattern: upNext.pattern, timeBased:true, duration: block.restSec });
           }
         });
       }
@@ -778,7 +797,7 @@ const App = (() => {
       workout.blocks.forEach((block) => {
         for (let s=1; s<=block.sets; s++) {
           steps.push(workStep(block, s, block.sets));
-          if (s < block.sets) steps.push({ phase:'rest', name:'Rest', nextName: block.name, cue:'Catch your breath, shake it out.', images: block.images||[], video: block.video||null, pattern: block.pattern, timeBased:true, duration: block.restSec });
+          if (s < block.sets) steps.push({ phase:'rest', name:'Rest', nextName: block.name, nextId: block.exerciseId, cue:'Catch your breath, shake it out.', images: block.images||[], video: block.video||null, pattern: block.pattern, timeBased:true, duration: block.restSec });
         }
       });
     }
@@ -959,7 +978,8 @@ const App = (() => {
   // gently pulsing accent so there's always something alive on screen to look at.
   function renderRestMedia(step) {
     const wrap = $('playerMedia');
-    const thumb = step.video ? `https://i.ytimg.com/vi/${step.video}/hqdefault.jpg` : (step.images && step.images[0]);
+    const media = freshMedia(step.nextId, step);
+    const thumb = media.video ? `https://i.ytimg.com/vi/${media.video}/hqdefault.jpg` : media.images[0];
     const eyebrow = step.phase === 'rest' ? 'Resting' : 'Get ready';
     const caption = step.nextName ? `Up next: ${escapeHtml(step.nextName)}` : '';
     const overlay = `<div class="media-rest-overlay"><div class="media-rest-pulse"></div><span class="media-rest-eyebrow">${eyebrow}</span>${caption ? `<span class="media-rest-next">${caption}</span>` : ''}</div>`;
@@ -976,13 +996,14 @@ const App = (() => {
   function renderExerciseMedia(step) {
     const wrap = $('playerMedia');
     if (step.phase === 'rest' || step.phase === 'transition') { renderRestMedia(step); return; }
-    if (step.video) {
+    const media = freshMedia(step.exerciseId, step);
+    if (media.video) {
       wrap.classList.remove('placeholder');
-      wrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${step.video}?rel=0&modestbranding=1&mute=1&loop=1&playlist=${step.video}" title="${escapeHtml(step.name)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
+      wrap.innerHTML = `<iframe src="https://www.youtube.com/embed/${media.video}?rel=0&modestbranding=1&mute=1&loop=1&playlist=${media.video}" title="${escapeHtml(step.name)}" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen loading="lazy"></iframe>`;
       session.mediaImages = null;
       return;
     }
-    const images = step.images || [];
+    const images = media.images;
     if (images.length) {
       wrap.classList.remove('placeholder');
       wrap.innerHTML = `<img id="playerMediaImg" src="${images[0]}" alt="${escapeHtml(step.name)}">` +
