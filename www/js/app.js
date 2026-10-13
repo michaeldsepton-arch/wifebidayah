@@ -8,8 +8,16 @@ const App = (() => {
   const RING_R = 52;
   const RING_CIRC = 2 * Math.PI * RING_R;
 
-  // --- Weight units: everything is stored/computed in kg; these are the only
-  // place display/input gets converted to whatever `settings.units` is set to. ---
+  // --- Weight units: everything is stored/computed in kg. There are two
+  // independent unit preferences:
+  //   settings.units      — how the Progress tab displays trend/projection text.
+  //                          Changed only from Settings.
+  //   settings.entryUnits — how any weight *input* field (onboarding starting
+  //                          weight, the weekly weigh-in, a weighted set) shows
+  //                          and accepts values. Changed via the small kg/lbs
+  //                          chip pair next to each such field, and remembered
+  //                          for next time.
+  // Both ever only affect display/input — storage is always kg. ---
   const KG_PER_LB = 0.45359237;
   function units() { return (Store.get().settings.units === 'lbs') ? 'lbs' : 'kg'; }
   function unitLabel() { return units(); }
@@ -27,6 +35,51 @@ const App = (() => {
     const v = kgToDisplay(kg);
     const d = (decimals != null) ? decimals : (units() === 'lbs' ? 0 : 1);
     return (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toString();
+  }
+
+  function entryUnits() { return (Store.get().settings.entryUnits === 'lbs') ? 'lbs' : 'kg'; }
+  function entryUnitLabel() { return entryUnits(); }
+  function entryKgToDisplay(kg) {
+    if (kg == null || isNaN(kg)) return kg;
+    return entryUnits() === 'lbs' ? kg / KG_PER_LB : kg;
+  }
+  function entryDisplayToKg(val) {
+    if (val == null || isNaN(val)) return val;
+    return entryUnits() === 'lbs' ? val * KG_PER_LB : val;
+  }
+  function fmtEntryWeight(kg, decimals) {
+    if (kg == null || isNaN(kg)) return '';
+    const v = entryKgToDisplay(kg);
+    const d = (decimals != null) ? decimals : (entryUnits() === 'lbs' ? 0 : 1);
+    return (Math.round(v * Math.pow(10, d)) / Math.pow(10, d)).toString();
+  }
+
+  // Switches the persisted entry-unit preference and live-refreshes whichever
+  // weight-entry field(s) are currently on screen (onboarding, weigh-in banner,
+  // feedback, or the in-workout set-weight field) so the switch takes effect
+  // instantly without losing anything she's already typed in other fields.
+  function setEntryUnits(u) {
+    const normalized = (u === 'lbs') ? 'lbs' : 'kg';
+    Store.set(s => { s.settings.entryUnits = normalized; return s; });
+    document.querySelectorAll('.chip-wrap[id$="UnitsToggle"]').forEach(wrap => {
+      Array.from(wrap.children).forEach(c => c.classList.toggle('on', c.dataset.id === normalized));
+    });
+    const obLabel = $('obStartWeightLabel');
+    if (obLabel) obLabel.firstChild.textContent = `Starting weight (${normalized})`;
+    const fbLabel = $('feedbackWeighInLabel');
+    if (fbLabel) fbLabel.firstChild.textContent = `Weigh in today? (${normalized})`;
+    const entryLbl = $('entryWeightLabel');
+    if (entryLbl && session) entryLbl.textContent = `Weight (${normalized})`;
+    if (session) {
+      const step = session.steps[session.idx];
+      if (step && step.phase === 'work' && step.trackWeight) {
+        $('entryWeightInput').value = (step.suggestedWeightKg != null) ? fmtEntryWeight(step.suggestedWeightKg) : $('entryWeightInput').value;
+      }
+    }
+    ['home','p'].forEach(prefix => {
+      const input = $(prefix + 'WeighInInput');
+      if (input) input.placeholder = normalized;
+    });
   }
 
   // Drives the circular progress ring around the countdown: `fraction` is how much
@@ -152,6 +205,12 @@ const App = (() => {
     document.querySelectorAll('.onboard-step').forEach(el => el.classList.toggle('active', +el.dataset.step === n));
     const dots = $('onboardDots'); dots.innerHTML = '';
     for (let i=1;i<=4;i++) { const d=document.createElement('div'); if (i<=n) d.classList.add('on'); dots.appendChild(d); }
+    if (n === 4) {
+      const wrap = $('obUnitsToggle');
+      if (wrap) Array.from(wrap.children).forEach(c => c.classList.toggle('on', c.dataset.id === entryUnits()));
+      const lbl = $('obStartWeightLabel');
+      if (lbl) lbl.firstChild.textContent = `Starting weight (${entryUnitLabel()})`;
+    }
   }
 
   function onboardNext(from) {
@@ -170,15 +229,16 @@ const App = (() => {
   }
 
   function finishOnboarding() {
-    const startWeight = parseFloat($('obStartWeight').value);
+    const startWeightRaw = parseFloat($('obStartWeight').value);
+    const startWeightKg = entryDisplayToKg(startWeightRaw);
     Store.set(s => {
       s.settings.alarmEnabled = $('obAlarmToggle').classList.contains('on');
       s.settings.alarmTime = $('obAlarmTime').value || '17:30';
       s.onboarded = true;
       s.onboardedAt = new Date().toISOString();
-      if (!isNaN(startWeight) && startWeight > 0) {
-        s.startingWeightKg = startWeight;
-        Progress.logWeight(s, startWeight);
+      if (!isNaN(startWeightKg) && startWeightKg > 0) {
+        s.startingWeightKg = startWeightKg;
+        Progress.logWeight(s, startWeightKg);
       }
       return s;
     });
@@ -345,15 +405,20 @@ const App = (() => {
     el.innerHTML = `
       <div><div class="t-label" style="font-weight:600">${label}</div><div class="t-sub">Same day and time keeps your trend accurate.</div></div>
       <div style="display:flex;gap:8px;align-items:center">
-        <input type="number" step="0.1" id="${prefix}WeighInInput" placeholder="${unitLabel()}" style="width:76px">
+        <input type="number" step="0.1" id="${prefix}WeighInInput" placeholder="${entryUnitLabel()}" style="width:70px">
+        <div class="chip-wrap" id="${prefix}WeighInUnitsToggle">
+          <div class="chip" data-id="kg" onclick="App.setEntryUnits('kg')">kg</div>
+          <div class="chip" data-id="lbs" onclick="App.setEntryUnits('lbs')">lbs</div>
+        </div>
         <button class="btn btn-primary btn-sm" onclick="App.logWeighIn('${prefix}')">Log</button>
       </div>`;
+    Array.from($(prefix + 'WeighInUnitsToggle').children).forEach(c => c.classList.toggle('on', c.dataset.id === entryUnits()));
   }
 
   function logWeighIn(prefix) {
     const v = parseFloat($(prefix + 'WeighInInput').value);
     if (isNaN(v) || v <= 0) return;
-    Store.set(s => Progress.logWeight(s, displayToKg(v)));
+    Store.set(s => Progress.logWeight(s, entryDisplayToKg(v)));
     Notify.refreshSchedule(Store.get());
     renderHome();
     if ($('screen-progress').classList.contains('active')) renderProgress();
@@ -605,6 +670,8 @@ const App = (() => {
     if (isEntryMode) {
       renderEntryForm(step);
     } else {
+      const skipExBtn = $('playerSkipExerciseBtn');
+      if (skipExBtn) skipExBtn.style.display = (step.phase === 'work' && step.exerciseId) ? '' : 'none';
       session.remaining = step.isCapabilityTest ? 0 : step.duration;
       session.countUp = !!step.isCapabilityTest;
       session.total = session.countUp ? CAP_TEST_MAX_SEC : step.duration;
@@ -636,18 +703,55 @@ const App = (() => {
       || (step.reps ? `Aim for ${step.reps} reps.` : 'Enter how many reps you completed.');
     $('entryWeightRow').style.display = step.trackWeight ? 'flex' : 'none';
     const lbl = $('entryWeightLabel');
-    if (lbl) lbl.textContent = `Weight (${unitLabel()})`;
-    $('entryWeightInput').value = (step.suggestedWeightKg != null) ? fmtWeight(step.suggestedWeightKg) : '';
+    if (lbl) lbl.textContent = `Weight (${entryUnitLabel()})`;
+    const toggle = $('entryUnitsToggle');
+    if (toggle) Array.from(toggle.children).forEach(c => c.classList.toggle('on', c.dataset.id === entryUnits()));
+    $('entryWeightInput').value = (step.suggestedWeightKg != null) ? fmtEntryWeight(step.suggestedWeightKg) : '';
     $('entryRepsInput').value = '';
     $('entryRepsInput').placeholder = step.repTarget ? `${step.repTarget} reps` : (step.reps || 'reps');
+    $('entryWarning').style.display = 'none';
   }
 
   function finishSet() {
     const step = session.steps[session.idx];
-    const repsVal = parseInt($('entryRepsInput').value, 10);
-    const kgVal = step.trackWeight ? displayToKg(parseFloat($('entryWeightInput').value)) : null;
-    Store.set(s => Progress.recordSetPerformance(s, step.exerciseId, kgVal, isNaN(repsVal) ? null : repsVal));
+    const repsRaw = $('entryRepsInput').value;
+    const weightRaw = $('entryWeightInput').value;
+    const repsVal = parseInt(repsRaw, 10);
+    const warn = $('entryWarning');
+    // Don't let her accidentally advance with nothing logged — flag it and stay put.
+    if (repsRaw.trim() === '' || isNaN(repsVal) || repsVal < 0) {
+      warn.textContent = "Enter how many reps you completed before finishing the set.";
+      warn.style.display = 'block';
+      return;
+    }
+    if (step.trackWeight && (weightRaw.trim() === '' || isNaN(parseFloat(weightRaw)))) {
+      warn.textContent = `Enter the weight you used (in ${entryUnitLabel()}) before finishing the set.`;
+      warn.style.display = 'block';
+      return;
+    }
+    warn.style.display = 'none';
+    const kgVal = step.trackWeight ? entryDisplayToKg(parseFloat(weightRaw)) : null;
+    Store.set(s => Progress.recordSetPerformance(s, step.exerciseId, kgVal, repsVal));
     advance();
+  }
+
+  // Jumps past every remaining set/rest of the exercise she's currently on, landing
+  // on the next genuinely different exercise (or section) — a full "skip" rather
+  // than just the Skip button's single-step nudge.
+  function skipExercise() {
+    if (!session) return;
+    clearInterval(timerId); timerId = null;
+    const step = session.steps[session.idx];
+    const exId = step.exerciseId;
+    let i = session.idx + 1;
+    while (i < session.steps.length) {
+      const s = session.steps[i];
+      if (s.phase === 'transition') break;
+      if (s.phase === 'work' && s.exerciseId !== exId) break;
+      i++;
+    }
+    session.idx = i;
+    renderStep();
   }
 
   // Rest and transition steps have no video/entry form of their own — they're just
@@ -775,14 +879,28 @@ const App = (() => {
     renderStep();
   }
 
-  // Lets her undo an accidental Skip/Finished-Set tap. Steps back to the previous
-  // step in the sequence and re-renders it fresh (its own timer/entry state resets,
-  // same as landing on any step normally) rather than trying to restore exact
-  // elapsed time, which would be more surprising than useful here.
+  // Lets her backtrack through the whole workout, one set/exercise at a time,
+  // to redo or change something. A rest step is never a landing spot on its own —
+  // it's just automatic waiting, not something she "did" — so when the step right
+  // behind us is an inter-set rest for the *same* exercise, we hop straight past it
+  // onto the previous set. That makes Set 3/4 -> Back land on Set 2/4, then 1/4,
+  // and only then (once there's no earlier set of this exercise) onto the rest or
+  // transition that came before it. Re-renders fresh, same as landing on any step
+  // normally, rather than trying to restore exact elapsed time.
   function playerBack() {
     if (!session || session.idx <= 0) return;
     clearInterval(timerId); timerId = null;
-    session.idx -= 1;
+    let i = session.idx - 1;
+    while (
+      i > 0 &&
+      session.steps[i].phase === 'rest' &&
+      session.steps[i - 1].phase === 'work' &&
+      session.steps[i + 1] && session.steps[i + 1].phase === 'work' &&
+      session.steps[i - 1].exerciseId === session.steps[i + 1].exerciseId
+    ) {
+      i--;
+    }
+    session.idx = i;
     renderStep();
   }
 
@@ -797,7 +915,15 @@ const App = (() => {
     $('feedbackSummary').textContent = `${session.workout.blocks.length} exercises · about ${mins || session.workout.estMinutes} min`;
     document.querySelectorAll('#feedbackOptions button').forEach(b => b.classList.remove('selected'));
     $('feedbackWeight').value = '';
-    $('feedbackWeight').placeholder = unitLabel();
+    $('feedbackWeight').placeholder = entryUnitLabel();
+    const fbLabel = $('feedbackWeighInLabel');
+    if (fbLabel) fbLabel.firstChild.textContent = `Weigh in today? (${entryUnitLabel()})`;
+    const fbToggle = $('feedbackUnitsToggle');
+    if (fbToggle) Array.from(fbToggle.children).forEach(c => c.classList.toggle('on', c.dataset.id === entryUnits()));
+    // Weigh-in is a once-a-week thing, not an every-workout prompt — only surface
+    // this card when she's actually due (same rule as the Home/Progress banner).
+    const due = !Progress.weighInStatus(Store.get()).done;
+    $('feedbackWeighInCard').style.display = due ? '' : 'none';
     showScreen('screen-feedback');
   }
 
@@ -810,7 +936,7 @@ const App = (() => {
     const weightVal = parseFloat($('feedbackWeight').value);
     Store.set(s => {
       Progress.recordCompletion(s, session.workout, session.feedback || 'good');
-      if (!isNaN(weightVal) && weightVal > 0) Progress.logWeight(s, displayToKg(weightVal));
+      if (!isNaN(weightVal) && weightVal > 0) Progress.logWeight(s, entryDisplayToKg(weightVal));
       s.pendingWorkout = Generator.generate(s);
       return s;
     });
@@ -1231,7 +1357,7 @@ const App = (() => {
   return {
     init, onboardNext, finishOnboarding, toggleSwitch, goto,
     startWorkout, reroll, playerAction, playerSkip, playerBack, exitPlayer, setMediaFrame, finishSet,
-    pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll, setUnits,
+    pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll, setUnits, setEntryUnits, skipExercise,
     markManualComplete, checkForUpdates,
     setTodayTime, clearTodayTime, renderSettingsVisibility, logWeighIn,
     openExerciseDetail, closeExerciseDetail, openCurrentStepDetail, toggleCurrentLiked,

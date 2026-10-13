@@ -21,12 +21,13 @@ const Store = (() => {
       equipment: ['bodyweight','dumbbell','bench','plate','curlbar','table','treadmill'],
       excludedExerciseIds: [],
       excludedPatterns: [],         // e.g. avoid certain movement patterns if needed
-      weighInDay: 6,                 // day of week she weighs in (0=Sun..6=Sat); default Saturday
+      weighInDay: 3,                 // day of week she weighs in (0=Sun..6=Sat); default Wednesday
       weighInTime: '08:00',
       pauseMode: false,              // "pause program" switch for rest/injury weeks — stops nudges
       soundOnFinish: true,           // play a sound when a timer/set finishes
       vibrateOnFinish: true,
-      units: 'kg',                   // 'kg' or 'lbs' — display/input only, everything is stored in kg
+      units: 'kg',                   // 'kg' or 'lbs' — Progress tab display only, everything is stored in kg
+      entryUnits: 'kg',              // 'kg' or 'lbs' — remembers the last unit picked at any weight *input* field
     },
     progress: {
       difficultyTier: 1.0,          // 1.0 - 3.0, floats, scales up with consistency
@@ -66,7 +67,15 @@ const Store = (() => {
       if (!raw) return structuredClone(defaultState);
       const parsed = JSON.parse(raw);
       // shallow-merge with defaults so new fields appear after an app update
-      return deepMerge(structuredClone(defaultState), parsed);
+      const merged = deepMerge(structuredClone(defaultState), parsed);
+      // One-time migration: the weigh-in default changed from Saturday(6) to
+      // Wednesday(3). If she's still sitting on the old default (never picked
+      // a day herself), move her onto the new default once, then stop touching it.
+      if (!merged.settings._weighInDayMigrated) {
+        if (merged.settings.weighInDay === 6) merged.settings.weighInDay = 3;
+        merged.settings._weighInDayMigrated = true;
+      }
+      return merged;
     } catch (e) {
       console.warn('Store load failed, using defaults', e);
       return structuredClone(defaultState);
