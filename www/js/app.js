@@ -605,9 +605,12 @@ const App = (() => {
       likeBtn.onclick = () => { Store.set(s => Progress.toggleLiked(s, ex.id)); openExerciseDetail(id); };
 
       if (ex.ladder) {
-        // Ladder members get the richer multi-step "Easier alternatives" picker
-        // instead of the old single on/off toggle below.
+        // Ladder members get the richer multi-step build-up picker instead of the
+        // old single on/off toggle below. Label flips direction depending on
+        // whether she's currently on the easiest rung (nothing easier left) or
+        // anywhere harder (the usual case -- offer to go easier).
         $('detailLadderRow').style.display = 'flex';
+        $('detailLadderBtn').textContent = ladderButtonLabel(ex.ladder);
         $('detailLadderBtn').onclick = () => openLadderModal(ex.ladder);
       } else if (ex.altId) {
         const alt = Generator.byId(ex.altId);
@@ -632,16 +635,36 @@ const App = (() => {
     return `<div class="ladder-rung-icon">${icon}</div>`;
   }
 
+  // Matches what the generator actually does: with no stored preference, every
+  // ladder defaults to its HARDEST rung (same exercise it always was before this
+  // feature existed) -- easier rungs only ever come into play once she's chosen
+  // one herself. See Generator.isTopLadderRung / eligible().
+  function defaultLadderRungId(ladderId) {
+    const rungIds = LADDERS[ladderId] || [];
+    return rungIds[rungIds.length - 1];
+  }
+
+  function currentLadderRungId(ladderId) {
+    return Progress.currentLadderRungId(Store.get(), ladderId, defaultLadderRungId(ladderId));
+  }
+
+  // "Harder alternative" when she's on the easiest rung (the only direction left is
+  // up); "Easier alternatives" otherwise -- covers the default (hardest) case and
+  // every rung in between, where going easier is the far more common reason she'd
+  // open this.
+  function ladderButtonLabel(ladderId) {
+    const rungIds = LADDERS[ladderId] || [];
+    const activeId = currentLadderRungId(ladderId);
+    return activeId === rungIds[0] ? 'Harder alternative' : 'Easier alternatives';
+  }
+
   function openLadderModal(ladderId) {
     const rungIds = LADDERS[ladderId] || [];
     const rungs = rungIds.map(id => Generator.byId(id)).filter(Boolean);
     if (!rungs.length) return;
     const state = Store.get();
     const haveEquipment = (state.settings.equipment || []);
-    // When she hasn't opted in yet, default-highlight the easiest rung she can
-    // actually DO with her equipment, not necessarily the literal first rung.
-    const defaultRung = rungs.find(r => (r.equipment || []).some(eq => haveEquipment.includes(eq))) || rungs[0];
-    const activeId = Progress.currentLadderRungId(state, ladderId, defaultRung.id);
+    const activeId = currentLadderRungId(ladderId);
     $('ladderModalTitle').textContent = `${rungs[rungs.length - 1].name} — build-up steps`;
     const list = $('ladderRungList');
     list.innerHTML = '';
@@ -810,7 +833,12 @@ const App = (() => {
 
     const ladderBtn = $('playerLadderBtn');
     const stepExDef = step.phase === 'work' && step.exerciseId ? Generator.byId(step.exerciseId) : null;
-    ladderBtn.style.display = (stepExDef && stepExDef.ladder) ? '' : 'none';
+    if (stepExDef && stepExDef.ladder) {
+      ladderBtn.style.display = '';
+      ladderBtn.textContent = ladderButtonLabel(stepExDef.ladder);
+    } else {
+      ladderBtn.style.display = 'none';
+    }
 
     renderExerciseMedia(step);
     renderExerciseInstructions(step);
@@ -859,7 +887,7 @@ const App = (() => {
   function subLabel(step) {
     if (step.phase === 'rest') return 'resting — catch your breath';
     if (step.phase === 'transition') return step.nextName ? `next up: ${step.nextName}` : 'get into position';
-    if (step.phase === 'work' && step.isCapabilityTest) return 'first time on this one — hold as long as you comfortably can';
+    if (step.phase === 'work' && step.isCapabilityTest) return 'First time on this one — hold as long as you comfortably can.';
     if (step.phase === 'work') return `set ${step.setIndex} of ${step.totalSets}`;
     return 'tap start when ready';
   }
@@ -994,7 +1022,7 @@ const App = (() => {
     session.running = true;
     $('playerActionBtn').textContent = session.countUp ? "I'm done" : 'Pause';
     $('playerSub').textContent = session.countUp
-      ? 'go as long as you can, then tap "I\'m done"'
+      ? 'Go as long as you can, then tap "I\'m done".'
       : (session.steps[session.idx].phase === 'rest' ? 'resting — catch your breath'
          : session.steps[session.idx].phase === 'transition' ? subLabel(session.steps[session.idx])
          : 'in progress…');

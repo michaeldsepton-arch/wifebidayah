@@ -45,6 +45,20 @@ const Generator = (() => {
     return ex;
   }
 
+  // An easier rung of a build-up ladder (see LADDERS in exercises.js) is never
+  // picked by NORMAL rotation on its own — only the hardest/last rung of a ladder
+  // is a regular candidate here, same as before that ladder existed. The only way
+  // an easier rung ever gets used is if she's explicitly chosen it from "Easier
+  // alternatives" (resolvePreferred then overrides whatever this function picked).
+  // Without this, a brand-new exerciser's low difficultyTier would score the
+  // easiest rung of every ladder as the best tier match and she'd default straight
+  // into "Assisted Wall Sit" etc. instead of the real exercise.
+  function isTopLadderRung(ex) {
+    if (!ex.ladder) return true;
+    const rungs = LADDERS[ex.ladder] || [];
+    return rungs[rungs.length - 1] === ex.id;
+  }
+
   function eligible(state, patterns, excludeIds) {
     const s = state.settings;
     return EXERCISES.filter(e =>
@@ -52,7 +66,8 @@ const Generator = (() => {
       e.equipment.some(eq => s.equipment.includes(eq)) &&
       !s.excludedExerciseIds.includes(e.id) &&
       !s.excludedPatterns.includes(e.pattern) &&
-      !excludeIds.has(e.id)
+      !excludeIds.has(e.id) &&
+      isTopLadderRung(e)
     );
   }
 
@@ -64,7 +79,7 @@ const Generator = (() => {
       daysSince(state.exerciseRecency[e.id]) >= minGapDays
     );
     if (pool.length === 0) pool = eligible(state, patterns, excludeIds); // relax recency
-    if (pool.length === 0) pool = EXERCISES.filter(e => patterns.includes(e.pattern)); // last resort, ignore equipment/exclude
+    if (pool.length === 0) pool = EXERCISES.filter(e => patterns.includes(e.pattern) && isTopLadderRung(e)); // last resort, ignore equipment/exclude
     if (pool.length === 0) return null;
 
     const targetTier = state.progress.difficultyTier;
@@ -170,10 +185,18 @@ const Generator = (() => {
 
     if (ex.timeBased) {
       if (tier >= 2.5) duration = Math.round(ex.duration * 1.25);
-      const hold = Progress.suggestHoldTarget(state, ex.id, duration || ex.duration);
-      isCapabilityTest = hold.isCapabilityTest;
-      duration = hold.targetSec;
-      overloadNote = hold.note;
+      if (ex.isHold) {
+        // A genuine "how long can you sustain this" move -- first time is an
+        // open-ended capability test, every time after builds a target from her
+        // actual best (see Progress.suggestHoldTarget).
+        const hold = Progress.suggestHoldTarget(state, ex.id, duration || ex.duration);
+        isCapabilityTest = hold.isCapabilityTest;
+        duration = hold.targetSec;
+        overloadNote = hold.note;
+      }
+      // Dynamic, timed-interval moves (jumping jacks, mountain climbers, treadmill
+      // work, etc.) just run for a fixed, sensible duration every time -- there's no
+      // "hold as long as you can" version of doing jumping jacks.
     } else if (trackWeight) {
       const sug = Progress.suggestNext(state, ex.id);
       suggestedWeightKg = sug.suggestedKg;
