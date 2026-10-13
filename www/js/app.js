@@ -422,9 +422,27 @@ const App = (() => {
   }
 
   // ---------------- HOME ----------------
+  // A pendingWorkout (or an in-progress session built from one) is persisted and
+  // reused until she completes it -- but exercises.js isn't static: an exercise
+  // can be renamed, merged into another, or removed entirely (as assisted_wall_sit
+  // was). Anyone holding an already-generated plan that references a now-gone
+  // exercise id would otherwise be stuck with a dead row on the home screen --
+  // no thumbnail, not clickable, and nothing to tap to get rid of it. Treating
+  // such a plan as invalid and silently regenerating it is the general fix: it
+  // covers any future removal or rename the same way, not just this one.
+  function workoutIsValid(w) {
+    if (!w || !w.warmup || !w.blocks || !w.cooldown) return false;
+    const ids = [
+      ...w.warmup.map(x => x.id),
+      ...w.blocks.map(x => x.exerciseId),
+      ...w.cooldown.map(x => x.id),
+    ];
+    return ids.every(id => !!lookupMovement(id));
+  }
+
   function ensurePendingWorkout() {
     const state = Store.get();
-    if (!state.pendingWorkout) {
+    if (!workoutIsValid(state.pendingWorkout)) {
       const w = Generator.generate(state);
       Store.set(s => { s.pendingWorkout = w; return s; });
     }
@@ -436,6 +454,11 @@ const App = (() => {
   }
 
   function renderHome() {
+    // Belt and suspenders: some callers already call ensurePendingWorkout() first,
+    // but not every path that can land here does (e.g. simply switching back to
+    // the Home tab via goto()). Checking here too means a plan that went invalid
+    // between visits (exercise removed/renamed) never lingers on screen.
+    ensurePendingWorkout();
     const state = Store.get();
     const msg = Progress.morningMessage(state, state.profile.name);
     $('homeHeadline').textContent = msg.title;
@@ -811,7 +834,11 @@ const App = (() => {
 
   function startWorkout() {
     const state = Store.get();
-    const workout = state.pendingWorkout || Generator.generate(state);
+    let workout = state.pendingWorkout;
+    if (!workoutIsValid(workout)) {
+      workout = Generator.generate(state);
+      Store.set(s => { s.pendingWorkout = workout; return s; });
+    }
     session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now() };
     showScreen('screen-player');
     renderStep();
