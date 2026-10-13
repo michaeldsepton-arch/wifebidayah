@@ -86,6 +86,44 @@ const Generator = (() => {
     return out;
   }
 
+  // Picks cool-down stretches that actually match the muscles she just trained,
+  // instead of a random pair: a leg day gets leg stretches, a chest day gets a
+  // chest/shoulder stretch, and so on. Walks the distinct patterns trained today
+  // (in the order they appear in the workout) and takes one matching stretch per
+  // pattern, then tops up with any other matching stretch, then finally generic
+  // ones (deep breathing, etc.) so she still always gets at least two.
+  function pickTargetedCooldown(blocks) {
+    const trained = [...new Set((blocks || []).map(b => b.pattern))];
+    const used = new Set();
+    const picks = [];
+
+    for (const pattern of trained) {
+      if (picks.length >= 3) break;
+      const candidates = COOLDOWNS.filter(c => c.targets && c.targets.includes(pattern) && !used.has(c.id));
+      if (!candidates.length) continue;
+      const chosen = candidates[Math.floor(Math.random() * candidates.length)];
+      used.add(chosen.id);
+      picks.push(chosen);
+    }
+
+    if (picks.length < 2) {
+      const moreMatched = COOLDOWNS.filter(c =>
+        c.targets && c.targets.some(t => trained.includes(t)) && !used.has(c.id));
+      for (const c of moreMatched) {
+        if (picks.length >= 2) break;
+        used.add(c.id);
+        picks.push(c);
+      }
+    }
+
+    if (picks.length < 2) {
+      const generic = COOLDOWNS.filter(c => !used.has(c.id));
+      pickFew(generic, 2 - picks.length).forEach(c => picks.push(c));
+    }
+
+    return picks.slice(0, 3);
+  }
+
   // How many reps a reps string like "10-12", "10 per side" or "20 total" represents,
   // so a rep-based set can be given a believable, real running countdown.
   function parseRepsCount(repsStr) {
@@ -273,15 +311,22 @@ const Generator = (() => {
     const targetTotalSec = (state.settings.sessionMinutes || 30) * 60;
 
     const warmup = pickFew(WARMUPS, 2);
-    const cooldown = pickFew(COOLDOWNS, 2);
+    // Cool-down stretches depend on which patterns actually end up in the workout
+    // (so they can be tailored to what she trained), which isn't known until the
+    // workout itself is built below — use a rough average cooldown length here
+    // just to size the main-set time budget, then pick the real, targeted
+    // stretches afterward once the blocks exist.
+    const roughCooldownSec = 50; // ~2 stretches at ~25s each, same ballpark as before
     const overheadSec = warmup.reduce((a, w) => a + w.duration, 0)
-      + cooldown.reduce((a, c) => a + c.duration, 0)
-      + (warmup.length + cooldown.length) * TRANSITION_SEC;
+      + roughCooldownSec
+      + (warmup.length + 2) * TRANSITION_SEC;
     const mainBudget = Math.max(600, targetTotalSec - overheadSec);
 
     const workout = type === 'strength'
       ? buildStrengthWorkout(state, band, mainBudget)
       : buildCircuitWorkout(state, band, mainBudget);
+
+    const cooldown = pickTargetedCooldown(workout.blocks);
 
     const estMinutes = estimateMinutes(workout, warmup, cooldown);
 
