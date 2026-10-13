@@ -11,39 +11,102 @@ const App = (() => {
   // ---------------- TUTORIAL CONTENT ----------------
   // Every chapter covers one area of the app. Auto-plays end to end on first
   // open (skippable chapter by chapter); replayable any time from its own tab.
+  //
+  // Rather than static screenshots (which drift out of sync with the real UI
+  // and can't show interactive bits like buttons mid-press), each step names
+  // a `scene` (a TUTORIAL_SCENES entry that puts the real, live app into the
+  // right state) and a `target` (one or more CSS selectors, scoped to the
+  // real DOM) to spotlight: everything else gets blurred/dimmed, so the
+  // clear cutout *is* the feature being described. `target: null` (or
+  // omitted) means "show the whole screen, nothing blurred" — used when a
+  // step is about the screen broadly rather than one control on it.
   const TUTORIAL_CHAPTERS = [
-    { id:'home', title:'Your Daily Workout', icon:'◧', image:'img/tutorial/home.png', steps:[
-      { title:'Home is your starting point', body:"Today's workout is already built for you — matched to your schedule, your equipment, and how far you've progressed. Just tap Start." },
-      { title:'Streak & stats', image:'img/tutorial/home_stats.png', body:'The numbers up top track your streak and total sessions, so you can see your consistency build over time.' },
+    { id:'home', title:'Your Daily Workout', icon:'◧', scene:'home', steps:[
+      { title:'Home is your starting point', target:'.hero', body:"Today's workout is already built for you — matched to your schedule, your equipment, and how far you've progressed. Just tap Start." },
+      { title:'Streak & stats', target:'#screen-home .stat-strip', body:'The numbers up top track your streak and total sessions, so you can see your consistency build over time.' },
     ]},
-    { id:'player', title:'During a Workout', icon:'▲', steps:[
-      { title:'Timer or reps', image:'img/tutorial/player_timer.png', body:'Each move shows a video and step-by-step instructions. It\'s either a countdown timer (for holds and timed moves) or a spot to log your reps — and weight, if it needs one.' },
-      { title:'Sets vs. Rounds', image:'img/tutorial/player_sets.png', body:'"Set 2 of 4" means the same move again, with rest in between. "Round 2 of 5" means a circuit — you\'ll do a few different moves, then come back to this one again in the next round.' },
-      { title:'Made a mistake?', image:'img/tutorial/player_sets.png', body:'Tap the back arrow (top-left) to go back a step — all the way through the workout if you need to, set by set, exercise by exercise.' },
-      { title:'Want to move on?', image:'img/tutorial/player_skip.png', body:'"Skip this exercise" jumps past every remaining set of the current move, straight to the next one.' },
+    { id:'player', title:'During a Workout', scene:'player-timer', icon:'▲', steps:[
+      { title:'Timer or reps', target:'#playerTimerBlock', body:'Each move shows a video and step-by-step instructions. It\'s either a countdown timer (for holds and timed moves) or a spot to log your reps — and weight, if it needs one.' },
+      { title:'Sets vs. Rounds', scene:'player-sets', target:'#playerSetIndicator', body:'"Set 2 of 4" means the same move again, with rest in between. "Round 2 of 5" means a circuit — you\'ll do a few different moves, then come back to this one again in the next round.' },
+      { title:'Made a mistake?', scene:'player-sets', target:'#playerBackBtn', body:'Tap the back arrow (top-left) to go back a step — all the way through the workout if you need to, set by set, exercise by exercise.' },
+      { title:'Want to move on?', scene:'player-skip', target:'#playerSkipExerciseBtn', body:'"Skip this exercise" jumps past every remaining set of the current move, straight to the next one.' },
     ]},
-    { id:'rest', title:'Rest Screens', icon:'○', image:'img/tutorial/rest.png', steps:[
-      { title:'Between sets & rounds', body:"A short rest automatically counts down between sets of the same move, and before each new circuit round — with a preview of what's coming up next so you always know what to expect." },
+    { id:'rest', title:'Rest Screens', icon:'○', scene:'player-rest', steps:[
+      { title:'Between sets & rounds', target:['#playerMedia', '.timer-ring-wrap'], body:"A short rest automatically counts down between sets of the same move, and before each new circuit round — with a preview of what's coming up next so you always know what to expect." },
     ]},
-    { id:'like-media', title:'Liking Moves & Media', icon:'➜', image:'img/tutorial/like_media.png', steps:[
-      { title:'The heart button', body:'Tap the heart on a move you like and it\'ll show up in your plan more often. Tap the ⓘ any time for a closer look at proper form.' },
-      { title:'Always muted', body:'Every video is muted — no music ever plays — and loops quietly so it never just freezes mid-demo.' },
+    { id:'like-media', title:'Liking Moves & Media', icon:'➜', scene:'player-like', steps:[
+      { title:'The heart button', target:'.player-icon-btns', body:'Tap the heart on a move you like and it\'ll show up in your plan more often. Tap the ⓘ any time for a closer look at proper form.' },
+      { title:'Always muted', target:'#playerMedia', body:'Every video is muted — no music ever plays — and loops quietly so it never just freezes mid-demo.' },
     ]},
-    { id:'weighin', title:'Weigh-Ins', icon:'●', image:'img/tutorial/weighin_banner.png', steps:[
-      { title:'Once a week, not every workout', body:'You\'ll be asked to log your weight once a week (Wednesday by default — change the day and time any time in Settings), not after every single workout, so your trend stays accurate.' },
-      { title:'kg or lbs — your call', body:'Wherever you enter a weight — your weigh-in, a weighted set, your starting weight — there\'s a small kg/lbs switch right next to the field. It remembers your choice.' },
+    { id:'weighin', title:'Weigh-Ins', icon:'●', scene:'home-weighin', steps:[
+      { title:'Once a week, not every workout', target:'#homeWeighInBanner', body:'You\'ll be asked to log your weight once a week (Wednesday by default — change the day and time any time in Settings), not after every single workout, so your trend stays accurate.' },
+      { title:'kg or lbs — your call', target:'#homeWeighInUnitsToggle', body:'Wherever you enter a weight — your weigh-in, a weighted set, your starting weight — there\'s a small kg/lbs switch right next to the field. It remembers your choice.' },
     ]},
-    { id:'progress', title:'Progress Tab', icon:'✦', steps:[
-      { title:'Trend & consistency', image:'img/tutorial/progress.png', body:'See your weight trend, how consistent you\'ve been over the last few weeks, and badges you unlock along the way.' },
-      { title:'Units here are separate', image:'img/tutorial/settings.png', body:'The kg/lbs choice for this tab\'s trend and projection text is set in Settings, on its own — separate from the switches next to each input field.' },
+    { id:'progress', title:'Progress Tab', icon:'✦', scene:'progress', steps:[
+      { title:'Trend & consistency', target:['#progressTrendCard', '#progressConsistencyCard', '#progressMilestones'], body:'See your weight trend, how consistent you\'ve been over the last few weeks, and badges you unlock along the way.' },
+      { title:'Units here are separate', scene:'settings', target:'#setUnitsToggle', body:'The kg/lbs choice for this tab\'s trend and projection text is set in Settings, on its own — separate from the switches next to each input field.' },
     ]},
-    { id:'settings', title:'Settings', icon:'◂', image:'img/tutorial/settings.png', steps:[
-      { title:'Make it yours', body:'Set your weekly schedule, the equipment you have on hand, prayer-time-based reminders, cycle-aware pacing, your weigh-in day/time, and more — all here.' },
+    { id:'settings', title:'Settings', icon:'◂', scene:'settings', steps:[
+      { title:'Make it yours', target:null, body:'Set your weekly schedule, the equipment you have on hand, prayer-time-based reminders, cycle-aware pacing, your weigh-in day/time, and more — all here.' },
     ]},
-    { id:'quran', title:"Qur'an Player", icon:'◪', image:'img/tutorial/quran.png', steps:[
-      { title:'Listen any time', body:"Pick a reciter, a surah, and how you'd like it repeated, right from the Qur'an tab." },
+    { id:'quran', title:"Qur'an Player", icon:'◪', scene:'quran', steps:[
+      { title:'Listen any time', target:'#screen-quran .card', body:"Pick a reciter, a surah, and how you'd like it repeated, right from the Qur'an tab." },
     ]},
   ];
+
+  // Puts the real, live app into the state each chapter needs — same screens
+  // and (for the player) a harmless, non-persisted demo session — so the
+  // tutorial is always showing the actual current UI, never a stale picture
+  // of it. Safe to call repeatedly; none of these write anything to Store
+  // except home-weighin's forced preview, which never touches real storage.
+  let tutorialRealSession = null; // stashes a genuine in-progress workout, if any, while a player-* scene borrows `session`
+  function ensureTutorialDemoSession() {
+    if (session && !session.isTutorialDemo) { tutorialRealSession = session; }
+    if (!session || !session.isTutorialDemo) {
+      const workout = {
+        type: 'strength', estMinutes: 20, warmup: [], cooldown: [],
+        blocks: [
+          { exerciseId:'plank', name:'Forearm Plank', pattern:'core', sets:3, timeBased:true, duration:30, workSec:30, restSec:20, images:[], video:null, reps:null },
+          { exerciseId:'bodyweight_squat', name:'Bodyweight Squat', pattern:'squat', sets:3, reps:'10-12', timeBased:false, restSec:20, workSec:40, images:[], video:null },
+        ],
+      };
+      session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now(), isTutorialDemo: true };
+    }
+  }
+  function tutorialDemoStep(idx) {
+    ensureTutorialDemoSession();
+    showScreen('screen-player');
+    session.idx = idx;
+    renderStep();
+    clearInterval(timerId); timerId = null; // static preview — never actually ticking during the tutorial
+  }
+  function restoreRealSessionIfAny() {
+    if (tutorialRealSession) { session = tutorialRealSession; tutorialRealSession = null; }
+    else if (session && session.isTutorialDemo) { session = null; }
+  }
+  const TUTORIAL_SCENES = {
+    home: () => { restoreRealSessionIfAny(); goto('home'); }, // renderHome() already redraws the real weigh-in banner
+    'home-weighin': () => {
+      restoreRealSessionIfAny();
+      goto('home');
+      // Force-preview the "due" banner for the demo, without touching real
+      // storage — this is a separate state object, never passed to Store.set.
+      const fake = structuredClone(Store.get());
+      fake.lastWeighInWeekKey = 'tutorial-preview';
+      renderWeighInBanner(fake, 'home');
+    },
+    progress: () => { restoreRealSessionIfAny(); goto('progress'); },
+    settings: () => { restoreRealSessionIfAny(); goto('settings'); },
+    quran: () => { restoreRealSessionIfAny(); goto('quran'); },
+    'player-timer': () => tutorialDemoStep(0),
+    'player-sets': () => tutorialDemoStep(2),
+    'player-skip': () => tutorialDemoStep(0),
+    'player-rest': () => tutorialDemoStep(1),
+    'player-like': () => {
+      tutorialDemoStep(0);
+      $('playerLikeBtn').classList.add('on');
+    },
+  };
 
   // --- Weight units: everything is stored/computed in kg. There are two
   // independent unit preferences:
@@ -1417,8 +1480,7 @@ const App = (() => {
     const idx = TUTORIAL_CHAPTERS.findIndex(c => c.id === chapterId);
     if (idx < 0) return;
     tutorial = { chapterIds: [TUTORIAL_CHAPTERS[idx].id], chapterIdx: 0, stepIdx: 0, auto: false };
-    showScreen('screen-tutorial-player');
-    renderTutorialStep();
+    openTutorialOverlay();
   }
 
   // Auto-plays every chapter in order, right after onboarding finishes. Safe to
@@ -1427,8 +1489,7 @@ const App = (() => {
   function startTutorialAll() {
     if (Store.get().tutorialSeen) return;
     tutorial = { chapterIds: TUTORIAL_CHAPTERS.map(c => c.id), chapterIdx: 0, stepIdx: 0, auto: true };
-    showScreen('screen-tutorial-player');
-    renderTutorialStep();
+    openTutorialOverlay();
   }
 
   // "Replay from the start" on the Tutorial tab — walks through every chapter
@@ -1436,36 +1497,37 @@ const App = (() => {
   // tutorialSeen) so it always runs when she taps it.
   function replayTutorialFromStart() {
     tutorial = { chapterIds: TUTORIAL_CHAPTERS.map(c => c.id), chapterIdx: 0, stepIdx: 0, auto: false };
-    showScreen('screen-tutorial-player');
-    renderTutorialStep();
+    openTutorialOverlay();
   }
 
   function currentTutorialChapter() {
     return TUTORIAL_CHAPTERS.find(c => c.id === tutorial.chapterIds[tutorial.chapterIdx]);
   }
 
-  function renderTutorialStep() {
+  function openTutorialOverlay() {
+    $('tutOverlayRoot').style.display = 'block';
+    window.addEventListener('resize', onTutorialResize);
+    renderTutorialOverlay();
+  }
+
+  function onTutorialResize() {
+    if (tutorial) positionTutorialSpotlight(tutorialCurrentTarget);
+  }
+
+  // The tutorial no longer shows static pictures of the app — it puts the
+  // real, live screen into the right state (via the step's `scene`) and
+  // spotlights the actual control being described, blurring the rest.
+  let tutorialCurrentTarget = null;
+  function renderTutorialOverlay() {
     if (!tutorial) return;
     const ch = currentTutorialChapter();
     const step = ch.steps[tutorial.stepIdx];
-    $('tutChapterTitle').textContent = ch.title;
+
+    const sceneFn = TUTORIAL_SCENES[step.scene || ch.scene];
+    if (sceneFn) sceneFn();
+
     $('tutStepTitle').textContent = step.title;
     $('tutStepBody').textContent = step.body;
-    const img = $('tutStepImage');
-    const src = step.image || ch.image;
-    if (src) {
-      // Cache-bust on the app build so a device that cached an old copy of
-      // this file (from a previous install/update) always fetches the
-      // current one instead of silently showing nothing.
-      img.onerror = () => { img.style.display = 'none'; };
-      img.onload = () => { img.style.display = ''; };
-      img.style.display = '';
-      img.src = `${src}?v=${APP_BUILD}`;
-    } else {
-      img.removeAttribute('src');
-      img.style.display = 'none';
-    }
-    window.scrollTo(0, 0);
 
     const dots = $('tutStepDots'); dots.innerHTML = '';
     ch.steps.forEach((_, i) => {
@@ -1474,14 +1536,93 @@ const App = (() => {
       dots.appendChild(d);
     });
 
-    $('tutBackBtn').style.visibility = (tutorial.stepIdx > 0) ? 'visible' : 'hidden';
+    $('tutBackBtn').style.visibility = (tutorial.stepIdx > 0 || tutorial.chapterIdx > 0) ? 'visible' : 'hidden';
     const isLastStepOfChapter = tutorial.stepIdx === ch.steps.length - 1;
     const isLastChapter = tutorial.chapterIdx === tutorial.chapterIds.length - 1;
     $('tutNextBtn').textContent = (isLastStepOfChapter && isLastChapter) ? 'Done' : (isLastStepOfChapter ? 'Next chapter' : 'Next');
     // Skipping a single chapter only makes sense mid-sequence — hide it otherwise.
     $('tutSkipChapterBtn').style.display = (tutorial.chapterIds.length > 1 && !isLastChapter) ? '' : 'none';
     $('tutProgressLabel').textContent = tutorial.chapterIds.length > 1
-      ? `Chapter ${tutorial.chapterIdx + 1} of ${tutorial.chapterIds.length}` : '';
+      ? `${ch.title} · ${tutorial.chapterIdx + 1} of ${tutorial.chapterIds.length}` : ch.title;
+
+    // Let the scene's DOM changes (screen swap, scrollIntoView) settle before
+    // measuring anything — one frame is enough since nothing here animates in.
+    tutorialCurrentTarget = step.target !== undefined ? step.target : ch.target;
+    requestAnimationFrame(() => requestAnimationFrame(() => positionTutorialSpotlight(tutorialCurrentTarget)));
+  }
+
+  function positionTutorialSpotlight(target) {
+    const masks = { top:$('tutMaskTop'), bottom:$('tutMaskBottom'), left:$('tutMaskLeft'), right:$('tutMaskRight') };
+    const ring = $('tutSpotRing'), block = $('tutSpotBlock');
+    const hideSpotlight = () => {
+      Object.values(masks).forEach(m => m.style.display = 'none');
+      ring.style.display = 'none';
+      block.style.display = 'none';
+      positionTutorialCallout(null);
+    };
+    if (!target) return hideSpotlight();
+
+    const selectors = Array.isArray(target) ? target : [target];
+    const els = selectors.map(s => document.querySelector(s)).filter(Boolean);
+    if (!els.length) return hideSpotlight();
+
+    els[0].scrollIntoView({ block:'center', behavior:'instant' });
+
+    const rects = els.map(e => e.getBoundingClientRect());
+    const pad = 8;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const box = {
+      left: Math.max(0, Math.min(...rects.map(r => r.left)) - pad),
+      top: Math.max(0, Math.min(...rects.map(r => r.top)) - pad),
+      right: Math.min(vw, Math.max(...rects.map(r => r.right)) + pad),
+      bottom: Math.min(vh, Math.max(...rects.map(r => r.bottom)) + pad),
+    };
+    if (box.right <= box.left || box.bottom <= box.top) return hideSpotlight();
+
+    masks.top.style.cssText = `display:block;left:0;top:0;width:${vw}px;height:${box.top}px`;
+    masks.bottom.style.cssText = `display:block;left:0;top:${box.bottom}px;width:${vw}px;height:${Math.max(0, vh - box.bottom)}px`;
+    masks.left.style.cssText = `display:block;left:0;top:${box.top}px;width:${box.left}px;height:${box.bottom - box.top}px`;
+    masks.right.style.cssText = `display:block;left:${box.right}px;top:${box.top}px;width:${Math.max(0, vw - box.right)}px;height:${box.bottom - box.top}px`;
+    ring.style.cssText = `display:block;left:${box.left}px;top:${box.top}px;width:${box.right - box.left}px;height:${box.bottom - box.top}px`;
+    block.style.cssText = `display:block;left:${box.left}px;top:${box.top}px;width:${box.right - box.left}px;height:${box.bottom - box.top}px`;
+
+    positionTutorialCallout(box);
+  }
+
+  function positionTutorialCallout(box) {
+    const callout = $('tutCallout');
+    callout.style.maxHeight = '';
+    callout.style.overflowY = '';
+    const vh = window.innerHeight;
+    const gap = 14;
+    const edgeMargin = 10;
+    if (!box) { callout.style.top = ''; callout.style.bottom = '18px'; return; }
+    // Try sitting right below the spotlighted area first (measuring its real,
+    // current height — title/body are already set by this point).
+    callout.style.bottom = '';
+    callout.style.top = (box.bottom + gap) + 'px';
+    const spaceBelow = vh - (box.bottom + gap) - edgeMargin;
+    if (callout.offsetHeight <= spaceBelow) return;
+    // Doesn't fit below — try sitting just above it instead, growing upward
+    // from there so its real height (unknown until rendered) never matters.
+    callout.style.top = '';
+    callout.style.bottom = Math.max(14, vh - box.top + gap) + 'px';
+    const spaceAbove = box.top - gap - edgeMargin;
+    if (callout.offsetHeight <= spaceAbove) return;
+    // Neither side has full room for the card (a tall spotlight + long
+    // caption on a short screen) — rather than ever overlapping the clear
+    // spotlighted area, pin it to whichever side has more room and let its
+    // text scroll internally within that space.
+    if (spaceBelow >= spaceAbove) {
+      callout.style.bottom = '';
+      callout.style.top = (box.bottom + gap) + 'px';
+      callout.style.maxHeight = Math.max(120, spaceBelow) + 'px';
+    } else {
+      callout.style.top = '';
+      callout.style.bottom = Math.max(14, vh - box.top + gap) + 'px';
+      callout.style.maxHeight = Math.max(120, spaceAbove) + 'px';
+    }
+    callout.style.overflowY = 'auto';
   }
 
   function markChapterSeen(chapterId) {
@@ -1493,14 +1634,14 @@ const App = (() => {
     const ch = currentTutorialChapter();
     if (tutorial.stepIdx < ch.steps.length - 1) {
       tutorial.stepIdx += 1;
-      renderTutorialStep();
+      renderTutorialOverlay();
       return;
     }
     markChapterSeen(ch.id);
     if (tutorial.chapterIdx < tutorial.chapterIds.length - 1) {
       tutorial.chapterIdx += 1;
       tutorial.stepIdx = 0;
-      renderTutorialStep();
+      renderTutorialOverlay();
     } else {
       endTutorial();
     }
@@ -1510,22 +1651,23 @@ const App = (() => {
     if (!tutorial) return;
     if (tutorial.stepIdx > 0) {
       tutorial.stepIdx -= 1;
-      renderTutorialStep();
+      renderTutorialOverlay();
     } else if (tutorial.chapterIdx > 0) {
       tutorial.chapterIdx -= 1;
       tutorial.stepIdx = currentTutorialChapter().steps.length - 1;
-      renderTutorialStep();
+      renderTutorialOverlay();
     }
   }
 
-  // Skips the rest of the *current chapter* during the first-run sequence,
-  // moving straight to the next chapter (or ending, if it was the last one).
+  // Skips the rest of the *current chapter*, moving straight to the next
+  // chapter (or ending, if it was the last one) — available any time more
+  // than one chapter is queued up, whether auto-playing or manually replayed.
   function tutorialSkipChapter() {
     if (!tutorial || tutorial.chapterIds.length <= 1) return;
     if (tutorial.chapterIdx < tutorial.chapterIds.length - 1) {
       tutorial.chapterIdx += 1;
       tutorial.stepIdx = 0;
-      renderTutorialStep();
+      renderTutorialOverlay();
     } else {
       endTutorial();
     }
@@ -1534,6 +1676,9 @@ const App = (() => {
   function endTutorial() {
     const wasAuto = tutorial && tutorial.auto;
     tutorial = null;
+    window.removeEventListener('resize', onTutorialResize);
+    $('tutOverlayRoot').style.display = 'none';
+    restoreRealSessionIfAny();
     Store.set(s => { s.tutorialSeen = true; return s; });
     if (wasAuto) { goto('home'); } else { goto('tutorial'); }
   }

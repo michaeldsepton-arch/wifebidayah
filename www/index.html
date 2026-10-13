@@ -230,12 +230,12 @@
 
       <div class="card banner-card" id="pWeighInBanner" style="display:none"></div>
 
-      <div>
+      <div id="progressMilestones">
         <div class="section-head"><h2>Milestones</h2></div>
         <div class="badge-grid" id="badgeGrid"></div>
       </div>
 
-      <div class="card">
+      <div class="card" id="progressTrendCard">
         <div class="section-head" style="margin-bottom:10px"><h2>Weight trend</h2></div>
         <canvas class="sparkline" id="weightChart"></canvas>
         <p class="sub" id="weightDelta" style="color:var(--fg-dim);font-size:13px;margin-top:6px"></p>
@@ -245,7 +245,7 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card" id="progressConsistencyCard">
         <div class="section-head" style="margin-bottom:10px"><h2>Consistency</h2></div>
         <div class="consistency-bars" id="consistencyBars"></div>
         <p class="sub" id="consistencyRate" style="color:var(--fg-dim);font-size:12.5px;margin-top:10px"></p>
@@ -444,26 +444,33 @@
       <div id="tutorialChapterList"></div>
     </section>
 
-    <!-- TUTORIAL (full-screen chapter player) -->
-    <section class="screen" id="screen-tutorial-player">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <div class="t-sub" id="tutProgressLabel" style="color:var(--fg-dim)"></div>
+  </div>
+
+  <!-- ===================== TUTORIAL SPOTLIGHT OVERLAY ===================== -->
+  <!-- Sits on top of whatever real screen the tutorial has navigated to. Four
+       masks blur/dim everything except the thing being explained; a glowing
+       ring frames it; the callout card carries the caption + controls. -->
+  <div id="tutOverlayRoot" style="display:none">
+    <div class="tut-mask" id="tutMaskTop"></div>
+    <div class="tut-mask" id="tutMaskBottom"></div>
+    <div class="tut-mask" id="tutMaskLeft"></div>
+    <div class="tut-mask" id="tutMaskRight"></div>
+    <div class="tut-spot-block" id="tutSpotBlock"></div>
+    <div class="tut-spot-ring" id="tutSpotRing"></div>
+    <div class="tut-callout" id="tutCallout">
+      <div class="tut-callout-head">
+        <span class="t-sub" id="tutProgressLabel" style="color:var(--fg-dim)"></span>
         <button class="icon-btn" onclick="App.endTutorial()" title="Close" aria-label="Close">✕</button>
       </div>
-      <h1 style="font-size:20px" id="tutChapterTitle">Chapter</h1>
-      <img id="tutStepImage" class="tut-step-image" style="display:none" alt="">
-      <div class="card" style="margin-top:16px">
-        <div class="t-label" style="font-weight:600;font-size:17px" id="tutStepTitle">Title</div>
-        <p class="sub" style="margin-top:10px;line-height:1.5" id="tutStepBody">Body</p>
-      </div>
-      <div class="set-pips" id="tutStepDots" style="margin-top:16px;justify-content:center"></div>
-      <div class="player-controls" style="margin-top:18px">
+      <div class="t-label" style="font-weight:600;font-size:17px" id="tutStepTitle">Title</div>
+      <p class="sub" style="margin-top:8px;line-height:1.5" id="tutStepBody">Body</p>
+      <div class="set-pips" id="tutStepDots" style="margin-top:12px;justify-content:center"></div>
+      <div class="player-controls" style="margin-top:14px">
         <button class="btn btn-ghost" id="tutBackBtn" onclick="App.tutorialBack()">Back</button>
         <button class="btn btn-primary" id="tutNextBtn" onclick="App.tutorialNext()">Next</button>
       </div>
-      <button class="btn btn-ghost btn-sm" id="tutSkipChapterBtn" style="margin-top:10px;display:none" onclick="App.tutorialSkipChapter()">Skip this chapter</button>
-    </section>
-
+      <button class="btn btn-ghost btn-sm" id="tutSkipChapterBtn" style="margin-top:8px;display:none" onclick="App.tutorialSkipChapter()">Skip this chapter</button>
+    </div>
   </div>
 
   <!-- ===================== EXERCISE DETAIL MODAL ===================== -->
