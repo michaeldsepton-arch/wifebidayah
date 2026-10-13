@@ -46,6 +46,15 @@
       <label class="field">Alarm time
         <input type="time" id="obAlarmTime" value="17:30">
       </label>
+      <button class="btn btn-primary" onclick="App.onboardNext(3)">Continue</button>
+    </div>
+
+    <div class="onboard-step" data-step="4">
+      <h1 style="font-size:24px">One baseline number</h1>
+      <p style="color:var(--fg-dim);font-size:14px">So your progress graphs have a starting point, logged before the routine begins. You can skip this and add it later from Progress.</p>
+      <label class="field">Starting weight (kg)
+        <input type="number" step="0.1" id="obStartWeight" placeholder="e.g. 70">
+      </label>
       <button class="btn btn-primary" onclick="App.finishOnboarding()">Start my plan</button>
     </div>
   </div>
@@ -69,6 +78,8 @@
         <button class="link" style="align-self:center" onclick="App.markManualComplete()">Did something active today? Mark it done</button>
       </div>
 
+      <div class="card banner-card" id="homeWeighInBanner" style="display:none"></div>
+
       <div class="card" id="timePickCard"></div>
 
       <div class="stat-row">
@@ -79,6 +90,7 @@
 
       <div>
         <div class="section-head"><h2>Today's plan</h2><button class="link" onclick="App.reroll()">Shuffle</button></div>
+        <p class="sub" style="color:var(--fg-faint);font-size:12px;margin-top:2px">Tap a move to see how it's done.</p>
         <div class="card flush" id="planPreview"></div>
       </div>
     </section>
@@ -87,19 +99,46 @@
     <section class="screen" id="screen-player">
       <div class="progress-track"><div id="playerProgress" style="width:0%"></div></div>
       <div class="player-head">
-        <div class="phase" id="playerPhase">WARM-UP</div>
+        <div class="phase-row">
+          <div class="phase" id="playerPhase">WARM-UP</div>
+          <div class="player-icon-btns">
+            <button class="icon-btn" id="playerLikeBtn" onclick="App.toggleCurrentLiked()" title="Like this move">♥</button>
+            <button class="icon-btn" onclick="App.openCurrentStepDetail()" title="How to do this">ⓘ</button>
+          </div>
+        </div>
         <h1 id="playerName">Get ready</h1>
       </div>
       <div class="exercise-media" id="playerMedia"></div>
-      <div class="timer-ring-wrap"><div class="timer-num" id="playerTimer">00:30</div></div>
-      <div class="timer-sub" id="playerSub">tap start when ready</div>
-      <div class="reps-badge" id="playerRepsBadge" style="display:none"></div>
-      <div class="set-pips" id="playerPips"></div>
-      <div class="cue-card" id="playerCue">—</div>
-      <div class="player-controls">
-        <button class="btn btn-ghost" onclick="App.playerSkip()">Skip</button>
-        <button class="btn btn-primary" id="playerActionBtn" onclick="App.playerAction()">Start</button>
+
+      <!-- Timer mode: rest / transitions / genuinely time-based holds -->
+      <div id="playerTimerBlock">
+        <div class="timer-ring-wrap"><div class="timer-num" id="playerTimer">00:30</div></div>
+        <div class="timer-sub" id="playerSub">tap start when ready</div>
+        <div class="set-pips" id="playerPips"></div>
+        <div class="player-controls">
+          <button class="btn btn-ghost" id="playerSkipBtn" onclick="App.playerSkip()">Skip</button>
+          <button class="btn btn-primary" id="playerActionBtn" onclick="App.playerAction()">Start</button>
+        </div>
       </div>
+
+      <!-- Entry mode: rep-based (and weighted) sets — no timer, log what you did -->
+      <div id="playerEntryBlock" style="display:none">
+        <div class="set-pips" id="playerPipsEntry"></div>
+        <p class="entry-note" id="entryExerciseNote">Enter how many reps you completed.</p>
+        <div class="entry-row" id="entryWeightRow" style="display:none">
+          <label class="field">Weight (kg)
+            <input type="number" step="0.5" id="entryWeightInput" inputmode="decimal">
+          </label>
+        </div>
+        <div class="entry-row">
+          <label class="field">Reps completed
+            <input type="number" id="entryRepsInput" inputmode="numeric">
+          </label>
+        </div>
+        <button class="btn btn-primary" onclick="App.finishSet()">Finished Set</button>
+      </div>
+
+      <div class="cue-card" id="playerCue">—</div>
       <button class="btn btn-ghost" onclick="App.exitPlayer()" style="border:none;color:var(--fg-faint)">End workout</button>
     </section>
 
@@ -134,6 +173,8 @@
         <div class="stat"><div class="n" id="pTotal">0</div><div class="l">sessions</div></div>
       </div>
 
+      <div class="card banner-card" id="pWeighInBanner" style="display:none"></div>
+
       <div>
         <div class="section-head"><h2>Milestones</h2></div>
         <div class="badge-grid" id="badgeGrid"></div>
@@ -149,10 +190,66 @@
         </div>
       </div>
 
+      <div class="card">
+        <div class="section-head" style="margin-bottom:10px"><h2>Consistency</h2></div>
+        <div class="consistency-bars" id="consistencyBars"></div>
+        <p class="sub" id="consistencyRate" style="color:var(--fg-dim);font-size:12.5px;margin-top:10px"></p>
+      </div>
+
+      <div class="card">
+        <div class="section-head" style="margin-bottom:10px"><h2>Expected progress</h2></div>
+        <p class="sub" id="expectedProgressText" style="color:var(--fg-dim);font-size:13px"></p>
+      </div>
+
       <div>
         <div class="section-head"><h2>Recent sessions</h2></div>
         <div class="card flush" id="historyList"></div>
       </div>
+    </section>
+
+    <!-- QURAN -->
+    <section class="screen" id="screen-quran">
+      <h1 style="font-size:22px">Qur'an</h1>
+      <div class="card">
+        <label class="field">Reciter
+          <select id="qReciter" onchange="App.updateQuranHint()"></select>
+        </label>
+        <label class="field" style="margin-top:12px">Surah
+          <select id="qSurah" onchange="App.updateQuranHint()"></select>
+        </label>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <label class="field" style="flex:1">From ayah
+            <input type="number" id="qStartAyah" min="1">
+          </label>
+          <label class="field" style="flex:1">To ayah
+            <input type="number" id="qEndAyah" min="1">
+          </label>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <label class="field" style="flex:1">Repeat
+            <select id="qRepeatMode">
+              <option value="perAyah">Each ayah</option>
+              <option value="wholeRange">Whole range</option>
+            </select>
+          </label>
+          <label class="field" style="flex:1">Times
+            <input type="number" id="qRepeatCount" min="1" max="20" value="1">
+          </label>
+        </div>
+        <p class="sub" id="qHint" style="color:var(--fg-faint);font-size:12px;margin-top:8px"></p>
+        <button class="btn btn-primary" style="margin-top:14px" onclick="App.quranPlay()">Play</button>
+      </div>
+
+      <div class="card" id="qNowPlaying" style="display:none">
+        <div class="t-label" style="font-weight:600" id="qNowLabel">—</div>
+        <div class="t-sub" id="qNowSub"></div>
+        <div style="display:flex;gap:10px;margin-top:12px">
+          <button class="btn btn-ghost btn-sm" onclick="App.quranPrev()">◂ Prev</button>
+          <button class="btn btn-primary btn-sm" style="flex:1" id="qPlayPauseBtn" onclick="App.quranTogglePlay()">Pause</button>
+          <button class="btn btn-ghost btn-sm" onclick="App.quranNext()">Next ▸</button>
+        </div>
+      </div>
+      <audio id="qAudio" style="display:none"></audio>
     </section>
 
     <!-- SETTINGS -->
@@ -222,6 +319,36 @@
       </div>
 
       <div class="card">
+        <div class="section-head" style="margin-bottom:10px"><h2>Weekly weigh-in</h2></div>
+        <label class="field">Day</label>
+        <div class="day-grid" id="setWeighInDay" style="margin-top:6px;margin-bottom:12px"></div>
+        <label class="field">Time
+          <input type="time" id="setWeighInTime">
+        </label>
+      </div>
+
+      <div class="card">
+        <div class="toggle-row">
+          <div><div class="t-label">Pause program</div><div class="t-sub">Stop daily nudges for a rest or injury week</div></div>
+          <button class="switch" id="setPauseToggle" onclick="App.toggleSwitch(this)"></button>
+        </div>
+        <div class="toggle-row">
+          <div><div class="t-label">Sound on timer finish</div></div>
+          <button class="switch" id="setSoundToggle" onclick="App.toggleSwitch(this)"></button>
+        </div>
+        <div class="toggle-row">
+          <div><div class="t-label">Vibrate on timer finish</div></div>
+          <button class="switch" id="setVibrateToggle" onclick="App.toggleSwitch(this)"></button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="section-head" style="margin-bottom:10px"><h2>Notifications</h2></div>
+        <p class="sub" id="notifStatusLine" style="color:var(--fg-dim);font-size:13px">Checking…</p>
+        <button class="btn btn-ghost btn-sm" style="margin-top:10px" onclick="App.fixNotifications()">Check / fix notification settings</button>
+      </div>
+
+      <div class="card">
         <div class="section-head" style="margin-bottom:10px"><h2>Equipment on hand</h2></div>
         <div class="chip-wrap" id="setEquipment"></div>
       </div>
@@ -246,6 +373,27 @@
 
   </div>
 
+  <!-- ===================== EXERCISE DETAIL MODAL ===================== -->
+  <div class="modal-overlay" id="exerciseDetail" style="display:none" onclick="if(event.target===this) App.closeExerciseDetail()">
+    <div class="modal-sheet">
+      <div class="modal-head">
+        <h2 id="detailTitle">Exercise</h2>
+        <button class="icon-btn" onclick="App.closeExerciseDetail()">✕</button>
+      </div>
+      <div class="exercise-media" id="detailMedia"></div>
+      <p class="cue-line" id="detailCue"></p>
+      <ol class="howto-list" id="detailSteps"></ol>
+      <div class="toggle-row" id="detailPrefRow" style="display:none">
+        <div><div class="t-label">Liked</div><div class="t-sub">Shows up more often in your plans</div></div>
+        <button class="icon-btn heart-toggle" id="detailLikeBtn">♥</button>
+      </div>
+      <div class="toggle-row" id="detailAltRow" style="display:none">
+        <div><div class="t-label" id="detailAltLabel">Use easier version</div><div class="t-sub">Applies from your next workout</div></div>
+        <button class="switch" id="detailAltToggle"></button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===================== TAB BAR ===================== -->
   <div class="tabbar" id="tabbar" style="display:none">
     <div class="tabbar-inner">
@@ -256,6 +404,10 @@
       <button class="tab" data-tab="progress" onclick="App.goto('progress')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19V9M12 19V5M20 19v-7"/></svg>
         <span class="tl">Progress</span>
+      </button>
+      <button class="tab" data-tab="quran" onclick="App.goto('quran')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+        <span class="tl">Qur'an</span>
       </button>
       <button class="tab" data-tab="settings" onclick="App.goto('settings')">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
@@ -273,10 +425,11 @@
 <script src="js/version.js"></script>
 <script src="js/exercises.js"></script>
 <script src="js/storage.js"></script>
-<script src="js/generator.js"></script>
 <script src="js/progress.js"></script>
+<script src="js/generator.js"></script>
 <script src="js/prayer.js"></script>
 <script src="js/notifications.js"></script>
+<script src="js/quran.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

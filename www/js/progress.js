@@ -1,5 +1,9 @@
-// Weekly scheduling intelligence + difficulty progression.
+// Weekly scheduling intelligence, difficulty progression, weigh-in tracking and
+// per-exercise progressive overload (weights/reps and time-based holds).
 const Progress = (() => {
+
+  const REP_TARGET_LO = 6;
+  const REP_TARGET_HI = 10;
 
   function startOfWeek(d = new Date()) {
     const date = new Date(d);
@@ -10,12 +14,16 @@ const Progress = (() => {
     return date;
   }
 
+  function stripTime(d) { const c = new Date(d); c.setHours(0,0,0,0); return c; }
+
+  function isoWeekKey(d = new Date()) {
+    return startOfWeek(d).toISOString().slice(0, 10); // the Monday date, stable per-week key
+  }
+
   function sessionsThisWeek(state) {
     const start = startOfWeek();
     return state.history.filter(h => new Date(h.date) >= start).length;
   }
-
-  function stripTime(d) { const c = new Date(d); c.setHours(0,0,0,0); return c; }
 
   // The full weekly target, unless `forDate` falls in the week she started using the
   // app — then it's capped to however many preferred days are actually left in that
@@ -36,29 +44,55 @@ const Progress = (() => {
     return Math.max(1, Math.min(target, count || target));
   }
 
+  // Separates how many PREFERRED days are left this week from how many days are left
+  // AT ALL (including off-days) — this is the fix for the "2 sessions left, 1 day
+  // left" bug: the old code only ever looked at calendar days left, so it could tell
+  // her to do two sessions in a single remaining day. `stillPossible` is the honest
+  // ceiling (even using every remaining day, preferred or not); `onTrack` additionally
+  // checks whether she can still hit it using only her usual preferred days.
   function weekProgress(state) {
     const done = sessionsThisWeek(state);
     const target = effectiveWeeklyTarget(state, new Date());
     const start = startOfWeek();
-    const today = new Date();
-    const todayIdx = today.getDay() === 0 ? 7 : today.getDay(); // 1..7, Mon=1
-    const daysLeftIncToday = 8 - todayIdx; // includes today
+    const today = stripTime(new Date());
     const remaining = Math.max(target - done, 0);
-    return { done, target, remaining, daysLeftIncToday, onTrack: remaining <= daysLeftIncToday };
+
+    let anyDaysLeft = 0, preferredDaysLeft = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start); d.setDate(start.getDate() + i);
+      if (d < today) continue;
+      anyDaysLeft++;
+      if (state.settings.preferredDays.includes(d.getDay())) preferredDaysLeft++;
+    }
+
+    const stillPossible = remaining <= anyDaysLeft;
+    const onTrack = remaining <= preferredDaysLeft;
+    return { done, target, remaining, anyDaysLeft, preferredDaysLeft, onTrack, stillPossible };
   }
 
-  // The "intuitive" morning nudge copy — reflects how many are left and how urgent it's getting.
-  function morningMessage(state, name) {
-    const who = name ? name : 'there';
+  // The "intuitive" morning nudge copy. Never claims an impossible combination (more
+  // sessions left than days left to fit them in) — when the week's target is already
+  // out of reach it says so plainly and reframes around just today, instead of
+  // pretending today alone can cover several missed sessions.
+  function morningMessage(state) {
+    if (state.settings.pauseMode) {
+      return { title: 'Program paused', body: "You've paused your routine — no pressure this week. Resume any time from Settings." };
+    }
     const wp = weekProgress(state);
     if (wp.remaining === 0) {
       return { title: `You're done for the week 🎉`, body: `${wp.done}/${wp.target} sessions complete. Today's a free day — rest or move just for fun.` };
     }
-    if (wp.remaining >= wp.daysLeftIncToday) {
-      return { title: `Today's the day`, body: `${wp.remaining} session${wp.remaining>1?'s':''} left and ${wp.daysLeftIncToday} day${wp.daysLeftIncToday>1?'s':''} to fit them in — got 30 min today?` };
+    if (!wp.stillPossible) {
+      return { title: `Let's grab today's session`, body: `This week's ${wp.target}-session target is out of reach now — no all-or-nothing here. One more today still counts, and next week resets clean.` };
     }
-    if (wp.daysLeftIncToday <= 2) {
-      return { title: `Last call this week`, body: `${wp.remaining} to go, only ${wp.daysLeftIncToday} day${wp.daysLeftIncToday>1?'s':''} left. Today would keep you on track.` };
+    if (wp.remaining === 1) {
+      return { title: `Today's the day`, body: `Just 1 session left to hit ${wp.target} this week — got 30 min today?` };
+    }
+    if (wp.remaining === wp.anyDaysLeft) {
+      return { title: `Every day counts now`, body: `${wp.remaining} sessions left and exactly ${wp.anyDaysLeft} day${wp.anyDaysLeft>1?'s':''} left — today keeps you on pace.` };
+    }
+    if (wp.anyDaysLeft <= 2) {
+      return { title: `Last call this week`, body: `${wp.remaining} to go, ${wp.anyDaysLeft} day${wp.anyDaysLeft>1?'s':''} left. Today would keep you on track.` };
     }
     return { title: `Got 30 min today?`, body: `${wp.done}/${wp.target} done this week — plenty of runway, but today works great if you're free.` };
   }
@@ -92,7 +126,6 @@ const Progress = (() => {
     else if (feedback === 'hard') tier -= 0.1;
     else tier += 0.03; // slow natural progression on steady 'good' feedback
 
-    // bonus bump for hitting weekly target three weeks running
     tier = Math.max(1, Math.min(3, tier));
     state.progress.difficultyTier = Math.round(tier * 100) / 100;
 
@@ -102,15 +135,144 @@ const Progress = (() => {
 
   function logWeight(state, kg) {
     state.weightLog.push({ date: new Date().toISOString(), kg });
+    state.lastWeighInWeekKey = isoWeekKey(new Date());
     return state;
   }
 
   function weightTrend(state) {
     const log = [...state.weightLog].sort((a,b) => new Date(a.date) - new Date(b.date));
     if (log.length < 2) return null;
-    const first = log[0].kg, lastW = log[log.length-1].kg;
-    return { first, last: lastW, delta: Math.round((lastW - first) * 10) / 10 };
+    const first = log[0], last = log[log.length - 1];
+    const days = Math.max((new Date(last.date) - new Date(first.date)) / 86400000, 1);
+    const weeks = Math.round((days / 7) * 10) / 10;
+    return { first: first.kg, last: last.kg, delta: Math.round((last.kg - first.kg) * 10) / 10, weeks: Math.max(weeks, 0.1) };
   }
 
-  return { startOfWeek, sessionsThisWeek, weekProgress, effectiveWeeklyTarget, morningMessage, recordCompletion, logWeight, weightTrend };
+  // Resolves which day/time she's due to weigh in this week and whether it's already
+  // logged, upcoming, or overdue — drives both the Home banner and the escalating
+  // notification nag (item #19: keep reminding until she actually logs it).
+  function weighInStatus(state, now = new Date()) {
+    const start = startOfWeek(now);
+    const dow = state.settings.weighInDay;
+    const offset = dow === 0 ? 6 : dow - 1; // Mon=0 .. Sun=6, relative to the Monday week-start
+    const targetDate = new Date(start); targetDate.setDate(start.getDate() + offset);
+    const weekKey = isoWeekKey(now);
+    const done = state.lastWeighInWeekKey === weekKey;
+    const today = stripTime(now);
+    const daysUntil = Math.round((targetDate - today) / 86400000);
+    const status = done ? 'done' : (daysUntil > 0 ? 'upcoming' : 'due');
+    const overdueDays = status === 'due' ? Math.max(0, -daysUntil) : 0;
+    return { done, status, targetDate, daysUntil, overdueDays, weekKey };
+  }
+
+  // Rolling per-week session counts (most recent `weeks` weeks) + how consistent that
+  // is against her target — feeds both the Progress screen and expectedProgress().
+  function consistencyStats(state, weeks = 6) {
+    const now = new Date();
+    const perWeek = [];
+    for (let i = weeks - 1; i >= 0; i--) {
+      const wkStart = new Date(startOfWeek(now)); wkStart.setDate(wkStart.getDate() - i * 7);
+      const wkEnd = new Date(wkStart); wkEnd.setDate(wkStart.getDate() + 7);
+      const count = state.history.filter(h => { const d = new Date(h.date); return d >= wkStart && d < wkEnd; }).length;
+      perWeek.push({ weekStart: wkStart.toISOString().slice(0, 10), count });
+    }
+    const target = state.settings.weeklyTarget || 4;
+    const sample = perWeek.slice(-4);
+    const avgPerWeek = sample.reduce((a, w) => a + w.count, 0) / (sample.length || 1);
+    const rate = target ? Math.max(0, Math.min(1, avgPerWeek / target)) : 0;
+    return { perWeek, avgPerWeek: Math.round(avgPerWeek * 10) / 10, target, rate: Math.round(rate * 100) };
+  }
+
+  // A simple, honest projection: takes her actual weigh-in trend rate (kg/week) and
+  // shows where that puts her in `weeksAhead` weeks IF she keeps up her actual
+  // consistency rate — not a flat best-case number.
+  function expectedProgress(state, weeksAhead = 8) {
+    const stats = consistencyStats(state);
+    const trend = weightTrend(state);
+    let kgPerWeek = null, projectedWeight = null;
+    if (trend) {
+      kgPerWeek = Math.round((trend.delta / trend.weeks) * 100) / 100;
+      const sorted = [...state.weightLog].sort((a, b) => new Date(b.date) - new Date(a.date));
+      if (sorted.length) {
+        projectedWeight = Math.round((sorted[0].kg + kgPerWeek * weeksAhead) * 10) / 10;
+      }
+    }
+    return { consistencyRate: stats.rate, avgPerWeek: stats.avgPerWeek, target: stats.target, kgPerWeekTrend: kgPerWeek, projectedWeight, weeksAhead };
+  }
+
+  function toggleLiked(state, exerciseId) {
+    const p = state.exercisePrefs[exerciseId] || {};
+    p.liked = !p.liked;
+    state.exercisePrefs[exerciseId] = p;
+    return state;
+  }
+
+  function setUseAlt(state, exerciseId, useAlt) {
+    const p = state.exercisePrefs[exerciseId] || {};
+    p.useAlt = !!useAlt;
+    state.exercisePrefs[exerciseId] = p;
+    return state;
+  }
+
+  // ---------- Progressive overload: weighted / rep-based exercises ----------
+  // Target band is 6-10 reps. Below it, drop weight (even next set, same session);
+  // above it, add weight. Persists per-exercise so the NEXT time this move comes up
+  // — whenever that is — it resumes exactly where she left off.
+  function suggestNext(state, exerciseId) {
+    const perf = state.exercisePerf[exerciseId];
+    if (!perf || perf.lastWeightKg == null) {
+      return { suggestedKg: null, note: `First time — pick a weight you can do for ${REP_TARGET_LO}-${REP_TARGET_HI} reps with good form, then log it.` };
+    }
+    let note;
+    if (perf.lastReps < REP_TARGET_LO) {
+      note = `Last time: ${perf.lastReps} reps at ${perf.lastWeightKg}kg — try a little lighter today so you can land in the ${REP_TARGET_LO}-${REP_TARGET_HI} range.`;
+    } else if (perf.lastReps > REP_TARGET_HI) {
+      note = `You hit ${perf.lastReps} reps at ${perf.lastWeightKg}kg last time — try a little heavier today.`;
+    } else {
+      note = `Last time: ${perf.lastReps} reps at ${perf.lastWeightKg}kg — aim for ${REP_TARGET_LO}-${REP_TARGET_HI} again.`;
+    }
+    return { suggestedKg: perf.lastWeightKg, note };
+  }
+
+  // Called the moment she taps "Finished Set" — updates immediately so the very next
+  // set (same session or not) sees the fresh number via suggestNext().
+  function recordSetPerformance(state, exerciseId, kg, reps) {
+    const perf = state.exercisePerf[exerciseId] || { timesPerformed: 0 };
+    perf.lastWeightKg = (kg === null || kg === undefined || isNaN(kg)) ? (perf.lastWeightKg ?? null) : kg;
+    perf.lastReps = (reps === null || reps === undefined || isNaN(reps)) ? (perf.lastReps ?? null) : reps;
+    perf.timesPerformed = (perf.timesPerformed || 0) + 1;
+    state.exercisePerf[exerciseId] = perf;
+    return state;
+  }
+
+  // ---------- Progressive overload: time-based holds (planks, wall sits, etc.) ----------
+  // First time is a capability test — no target, just "go as long as you can" — and
+  // every target after that is built from her actual best, not a flat default.
+  function suggestHoldTarget(state, exerciseId, defaultDuration) {
+    const perf = state.exercisePerf[exerciseId];
+    if (!perf || !perf.tested) {
+      return { isCapabilityTest: true, targetSec: defaultDuration, note: "First time on this one — hold as long as you comfortably can. We'll build your target from today's result." };
+    }
+    const best = perf.bestHoldSec || defaultDuration;
+    const targetSec = Math.max(defaultDuration, Math.round(best * 1.1));
+    return { isCapabilityTest: false, targetSec, note: `Your best so far: ${best}s — today's target is ${targetSec}s.` };
+  }
+
+  function recordHoldPerformance(state, exerciseId, achievedSec) {
+    if (achievedSec == null || isNaN(achievedSec)) return state;
+    const perf = state.exercisePerf[exerciseId] || { timesPerformed: 0 };
+    perf.lastHoldSec = achievedSec;
+    perf.bestHoldSec = Math.max(perf.bestHoldSec || 0, achievedSec);
+    perf.tested = true;
+    perf.timesPerformed = (perf.timesPerformed || 0) + 1;
+    state.exercisePerf[exerciseId] = perf;
+    return state;
+  }
+
+  return {
+    startOfWeek, sessionsThisWeek, weekProgress, effectiveWeeklyTarget, morningMessage,
+    recordCompletion, logWeight, weightTrend, isoWeekKey, weighInStatus, consistencyStats,
+    expectedProgress, toggleLiked, setUseAlt, suggestNext, recordSetPerformance,
+    suggestHoldTarget, recordHoldPerformance, REP_TARGET_LO, REP_TARGET_HI,
+  };
 })();

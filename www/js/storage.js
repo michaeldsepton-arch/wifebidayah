@@ -21,6 +21,11 @@ const Store = (() => {
       equipment: ['bodyweight','dumbbell','bench','plate','curlbar','table','treadmill'],
       excludedExerciseIds: [],
       excludedPatterns: [],         // e.g. avoid certain movement patterns if needed
+      weighInDay: 6,                 // day of week she weighs in (0=Sun..6=Sat); default Saturday
+      weighInTime: '08:00',
+      pauseMode: false,              // "pause program" switch for rest/injury weeks — stops nudges
+      soundOnFinish: true,           // play a sound when a timer/set finishes
+      vibrateOnFinish: true,
     },
     progress: {
       difficultyTier: 1.0,          // 1.0 - 3.0, floats, scales up with consistency
@@ -32,8 +37,22 @@ const Store = (() => {
     history: [],
     // recency map: exerciseId -> last completed date (for rotation / no-repeat logic)
     exerciseRecency: {},
+    // per-exercise preferences: exerciseId -> { liked: bool, useAlt: bool }
+    exercisePrefs: {},
+    // per-exercise progressive-overload memory:
+    // exerciseId -> { lastWeightKg, lastReps, bestHoldSec, lastHoldSec, timesPerformed, tested }
+    exercisePerf: {},
     // body weight log: [{date, kg}]
     weightLog: [],
+    // the baseline weight she gave during onboarding, before the routine began
+    startingWeightKg: null,
+    // isoWeekKey of the last week she actually logged a weigh-in (for the nag system)
+    lastWeighInWeekKey: null,
+    // remembered Qur'an player selections, so it reopens where she left off
+    quranPrefs: {
+      reciterId: 'alafasy', surahNum: 1, startAyah: 1, endAyah: 7,
+      repeatMode: 'perAyah', repeatCount: 1,
+    },
     // currently generated-but-not-yet-done workout, so Home + Player agree
     pendingWorkout: null,
     // the time she picked today to work out: { date: 'YYYY-MM-DD', time: 'HH:MM' }

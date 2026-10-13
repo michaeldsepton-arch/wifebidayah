@@ -3,6 +3,7 @@
 const Generator = (() => {
 
   const TRANSITION_SEC = 15; // time to change position / grab equipment between different exercises
+  const WEIGHTED_EQUIPMENT = ['dumbbell', 'plate', 'curlbar'];
 
   function daysSince(dateStr) {
     if (!dateStr) return 999;
@@ -11,6 +12,20 @@ const Generator = (() => {
   }
 
   function byId(id) { return EXERCISES.find(e => e.id === id); }
+
+  // If she's marked this exercise "use the easier version", swap it for its altId
+  // before it ever reaches the player — liking/rotation scoring below still happens
+  // on the original entry, so "liking" the hard version still works even while she's
+  // building up to it on the easier one.
+  function resolvePreferred(state, ex) {
+    if (!ex) return ex;
+    const pref = state.exercisePrefs && state.exercisePrefs[ex.id];
+    if (pref && pref.useAlt && ex.altId) {
+      const alt = byId(ex.altId);
+      if (alt) return alt;
+    }
+    return ex;
+  }
 
   function eligible(state, patterns, excludeIds) {
     const s = state.settings;
@@ -23,7 +38,9 @@ const Generator = (() => {
     );
   }
 
-  // Pick the best candidate: favors long-unused exercises, light tier matching, a little randomness.
+  // Pick the best candidate: favors long-unused exercises, light tier matching, a
+  // liked bonus (item #5 — liking an exercise makes it enter rotation more often),
+  // and a little randomness.
   function pickExercise(state, patterns, excludeIds, minGapDays) {
     let pool = eligible(state, patterns, excludeIds).filter(e =>
       daysSince(state.exerciseRecency[e.id]) >= minGapDays
@@ -33,11 +50,13 @@ const Generator = (() => {
     if (pool.length === 0) return null;
 
     const targetTier = state.progress.difficultyTier;
+    const prefs = state.exercisePrefs || {};
     let best = null, bestScore = -Infinity;
     for (const ex of pool) {
       const recency = Math.min(daysSince(state.exerciseRecency[ex.id]), 60);
       const tierDiff = Math.abs(ex.tier - targetTier);
-      const score = recency * 2 - tierDiff * 4 + Math.random() * 6;
+      const likedBonus = prefs[ex.id] && prefs[ex.id].liked ? 8 : 0;
+      const score = recency * 2 - tierDiff * 4 + likedBonus + Math.random() * 6;
       if (score > bestScore) { bestScore = score; best = ex; }
     }
     return best;
@@ -83,21 +102,48 @@ const Generator = (() => {
     return Math.max(24, Math.round(parseRepsCount(ex.reps) * tempo + 6));
   }
 
-  function makeBlock(ex, sets, restSec, tier, tempo) {
+  // Builds the full block the player will run: for time-based moves, resolves whether
+  // this is a first-time capability test or a progressed target built from her actual
+  // best; for weighted rep moves, resolves a suggested working weight from last time
+  // and the 6-10 rep target band. `trackWeight` tells the player to show a weight +
+  // reps entry (and a Finished Set button) instead of a countdown timer.
+  function makeBlock(ex, sets, restSec, tier, tempo, state) {
+    const trackWeight = !ex.timeBased && ex.equipment.some(eq => WEIGHTED_EQUIPMENT.includes(eq));
     let duration = ex.duration;
-    if (tier >= 2.5 && ex.timeBased) duration = Math.round(ex.duration * 1.25);
+    let isCapabilityTest = false, suggestedWeightKg = null, overloadNote = null, repTarget = null;
+
+    if (ex.timeBased) {
+      if (tier >= 2.5) duration = Math.round(ex.duration * 1.25);
+      const hold = Progress.suggestHoldTarget(state, ex.id, duration || ex.duration);
+      isCapabilityTest = hold.isCapabilityTest;
+      duration = hold.targetSec;
+      overloadNote = hold.note;
+    } else if (trackWeight) {
+      const sug = Progress.suggestNext(state, ex.id);
+      suggestedWeightKg = sug.suggestedKg;
+      overloadNote = sug.note;
+      repTarget = `${Progress.REP_TARGET_LO}-${Progress.REP_TARGET_HI}`;
+    }
+
     const workSec = ex.timeBased ? (duration || ex.duration) : estimateWorkSeconds(ex, tempo);
     return {
       exerciseId: ex.id,
       name: ex.name,
       cue: ex.cue,
       images: ex.images || [],
+      video: ex.video || null,
       steps: ex.steps || [],
       pattern: ex.pattern,
       focus: ex.focus,
       equipment: ex.equipment,
+      altId: ex.altId || null,
       timeBased: !!ex.timeBased,
+      isCapabilityTest,
       reps: ex.reps || null,
+      repTarget,
+      trackWeight,
+      suggestedWeightKg,
+      overloadNote,
       duration: duration || null,
       workSec,
       sets,
@@ -149,10 +195,12 @@ const Generator = (() => {
 
     const blocks = [];
     for (const slot of slots) {
-      const ex = pickExercise(state, slot.patterns, used, 10);
-      if (!ex) continue;
+      const picked = pickExercise(state, slot.patterns, used, 10);
+      if (!picked) continue;
+      used.add(picked.id);
+      const ex = resolvePreferred(state, picked);
       used.add(ex.id);
-      blocks.push(makeBlock(ex, band.minSets, band.restSec, state.progress.difficultyTier, band.repTempo));
+      blocks.push(makeBlock(ex, band.minSets, band.restSec, state.progress.difficultyTier, band.repTempo, state));
     }
     fillToBudget(blocks, mainBudget, band.maxSets);
     return { type: 'strength', blocks };
@@ -167,8 +215,10 @@ const Generator = (() => {
     const restSec = 20;
     const exList = [];
     for (const p of patternPlan) {
-      const ex = pickExercise(state, [p], used, 7);
-      if (!ex) continue;
+      const picked = pickExercise(state, [p], used, 7);
+      if (!picked) continue;
+      used.add(picked.id);
+      const ex = resolvePreferred(state, picked);
       used.add(ex.id);
       exList.push(ex);
     }
@@ -181,7 +231,7 @@ const Generator = (() => {
     let rounds = Math.max(2, Math.round(mainBudget / roundSec));
     rounds = Math.min(rounds, band.maxSets + 1); // circuits can run one extra round vs strength sets
 
-    const blocks = exList.map(ex => makeBlock(ex, rounds, restSec, state.progress.difficultyTier, band.repTempo));
+    const blocks = exList.map(ex => makeBlock(ex, rounds, restSec, state.progress.difficultyTier, band.repTempo, state));
     return { type: 'circuit', blocks };
   }
 
@@ -247,5 +297,5 @@ const Generator = (() => {
     };
   }
 
-  return { generate };
+  return { generate, byId, resolvePreferred };
 })();

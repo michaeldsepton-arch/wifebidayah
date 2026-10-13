@@ -113,7 +113,7 @@ button { font-family: inherit; }
 .stat .l { font-size: 12px; color: var(--fg-faint); margin-top: 2px; }
 
 /* ---------- Section heading ---------- */
-.section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: -6px; }
+.section-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 6px; }
 .section-head h2 { font-size: 15px; color: var(--fg-dim); letter-spacing: 0.02em; text-transform: uppercase; font-family: var(--font-body); font-weight: 600; }
 .section-head a, .link { color: var(--accent-strong); font-size: 13.5px; font-weight: 600; text-decoration: none; background:none; border:none; cursor:pointer; }
 
@@ -138,10 +138,10 @@ button { font-family: inherit; }
   background: linear-gradient(180deg, transparent, var(--bg) 30%);
 }
 .tabbar-inner {
-  max-width: 480px; width: 100%; display: flex;
+  max-width: 440px; width: 100%; display: flex;
   background: var(--bg-elevated); border: 1px solid var(--card-border);
-  border-radius: var(--radius-l); margin: 0 16px 14px; padding: 8px;
-  box-shadow: var(--shadow);
+  border-radius: var(--radius-l); margin: 0 20px 14px; padding: 8px;
+  box-shadow: var(--shadow); box-sizing: border-box;
 }
 .tab {
   flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
@@ -271,5 +271,53 @@ canvas.sparkline { width: 100%; height: 90px; display: block; }
 .onboard-progress > div.on { background: var(--accent); }
 
 ::selection { background: var(--accent); color: var(--accent-ink); }
+
+/* ---------- Banner cards (weigh-in nudge) ---------- */
+.banner-card { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-color: var(--accent); background: rgba(201,168,104,0.1); }
+
+/* ---------- Player head icon buttons ---------- */
+.phase-row { display: flex; align-items: center; justify-content: space-between; }
+.player-icon-btns { display: flex; gap: 8px; }
+.icon-btn {
+  width: 32px; height: 32px; border-radius: 50%; flex-shrink: 0;
+  background: var(--bg-elevated); border: 1.5px solid var(--card-border); color: var(--fg-dim);
+  display: flex; align-items: center; justify-content: center; font-size: 15px; cursor: pointer;
+}
+.icon-btn.on, .icon-btn.heart-toggle.on { background: var(--bad); border-color: var(--bad); color: #fff; }
+
+/* ---------- Exercise media video embed ---------- */
+.exercise-media iframe { width: 100%; height: 100%; border: 0; }
+
+/* ---------- Rep/weight entry (no-timer sets) ---------- */
+#playerEntryBlock { display: flex; flex-direction: column; gap: 14px; }
+.entry-note { text-align: center; color: var(--fg-dim); font-size: 13.5px; background: var(--bg-elevated); border-radius: var(--radius-s); padding: 10px 14px; }
+.entry-row { display: flex; gap: 10px; }
+.entry-row .field { flex: 1; }
+
+/* ---------- Standalone cue line / how-to list (used in exercise detail modal) ---------- */
+.cue-line { font-weight: 600; color: var(--fg); font-size: 14.5px; margin: 4px 0 0; }
+.howto-list { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 7px; }
+.howto-list li { font-size: 13.5px; color: var(--fg-dim); line-height: 1.42; }
+
+/* ---------- Exercise detail modal ---------- */
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(5,15,18,0.72); z-index: 50;
+  display: flex; align-items: flex-end; justify-content: center;
+}
+.modal-sheet {
+  width: 100%; max-width: 480px; max-height: 86vh; overflow-y: auto;
+  background: var(--card); border: 1px solid var(--card-border); border-bottom: none;
+  border-radius: 22px 22px 0 0; padding: 20px 20px calc(28px + env(safe-area-inset-bottom,0px));
+  display: flex; flex-direction: column; gap: 14px;
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.modal-head h2 { font-size: 19px; }
+
+/* ---------- Consistency bars (Progress screen) ---------- */
+.consistency-bars { display: flex; align-items: flex-end; gap: 8px; height: 90px; }
+.cbar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }
+.cbar-track { width: 100%; max-width: 22px; height: 100%; background: var(--bg-elevated); border-radius: 6px; display: flex; align-items: flex-end; overflow: hidden; }
+.cbar-fill { width: 100%; background: var(--teal); border-radius: 6px 6px 0 0; min-height: 3px; }
+.cbar-label { font-size: 10.5px; color: var(--fg-faint); font-weight: 700; }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
