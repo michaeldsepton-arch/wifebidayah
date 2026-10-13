@@ -35,7 +35,7 @@ const App = (() => {
       { title:'Between sets & rounds', target:['#playerMedia', '.timer-ring-wrap'], body:"A short rest automatically counts down between sets of the same move, and before each new circuit round — with a preview of what's coming up next so you always know what to expect." },
     ]},
     { id:'like-media', title:'Liking Moves & Media', icon:'➜', scene:'player-like', steps:[
-      { title:'The heart button', target:'.player-icon-btns', body:'Tap the heart on a move you like and it\'ll show up in your plan more often. Tap the ⓘ any time for a closer look at proper form.' },
+      { title:'The heart button', target:'.player-icon-btns', body:'Tap the heart on a move you like and it\'ll show up in your plan more often.' },
       { title:'Always muted', target:'#playerMedia', body:'Every video is muted — no music ever plays — and loops quietly so it never just freezes mid-demo.' },
     ]},
     { id:'weighin', title:'Weigh-Ins', icon:'●', scene:'home-weighin', steps:[
@@ -66,8 +66,8 @@ const App = (() => {
       const workout = {
         type: 'strength', estMinutes: 20, warmup: [], cooldown: [],
         blocks: [
-          { exerciseId:'plank', name:'Forearm Plank', pattern:'core', sets:3, timeBased:true, duration:30, workSec:30, restSec:20, images:[], video:null, reps:null },
-          { exerciseId:'bodyweight_squat', name:'Bodyweight Squat', pattern:'squat', sets:3, reps:'10-12', timeBased:false, restSec:20, workSec:40, images:[], video:null },
+          { exerciseId:'plank', name:'Forearm Plank', pattern:'core', sets:3, timeBased:true, duration:30, workSec:30, restSec:20, images:[], video:'pvIjsG5Svck', reps:null },
+          { exerciseId:'bodyweight_squat', name:'Bodyweight Squat', pattern:'squat', sets:3, reps:'10-12', timeBased:false, restSec:20, workSec:40, images:[], video:'l83R5PblSMA' },
         ],
       };
       session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now(), isTutorialDemo: true };
@@ -620,12 +620,6 @@ const App = (() => {
   }
 
   function closeExerciseDetail() { $('exerciseDetail').style.display = 'none'; }
-
-  function openCurrentStepDetail() {
-    const step = session && session.steps[session.idx];
-    if (!step || !step.exerciseId) return;
-    openExerciseDetail(step.exerciseId);
-  }
 
   let toastTimer = null;
   function showToast(msg) {
@@ -1579,16 +1573,31 @@ const App = (() => {
     };
     if (box.right <= box.left || box.bottom <= box.top) return hideSpotlight();
 
-    masks.top.style.cssText = `display:block;left:0;top:0;width:${vw}px;height:${box.top}px`;
-    masks.bottom.style.cssText = `display:block;left:0;top:${box.bottom}px;width:${vw}px;height:${Math.max(0, vh - box.bottom)}px`;
-    masks.left.style.cssText = `display:block;left:0;top:${box.top}px;width:${box.left}px;height:${box.bottom - box.top}px`;
-    masks.right.style.cssText = `display:block;left:${box.right}px;top:${box.top}px;width:${Math.max(0, vw - box.right)}px;height:${box.bottom - box.top}px`;
-    ring.style.cssText = `display:block;left:${box.left}px;top:${box.top}px;width:${box.right - box.left}px;height:${box.bottom - box.top}px`;
-    block.style.cssText = `display:block;left:${box.left}px;top:${box.top}px;width:${box.right - box.left}px;height:${box.bottom - box.top}px`;
-
-    positionTutorialCallout(box);
+    const showMasks = () => {
+      masks.top.style.cssText = `display:block;left:0;top:0;width:${vw}px;height:${box.top}px`;
+      masks.bottom.style.cssText = `display:block;left:0;top:${box.bottom}px;width:${vw}px;height:${Math.max(0, vh - box.bottom)}px`;
+      masks.left.style.cssText = `display:block;left:0;top:${box.top}px;width:${box.left}px;height:${box.bottom - box.top}px`;
+      masks.right.style.cssText = `display:block;left:${box.right}px;top:${box.top}px;width:${Math.max(0, vw - box.right)}px;height:${box.bottom - box.top}px`;
+      ring.style.cssText = `display:block;left:${box.left}px;top:${box.top}px;width:${box.right - box.left}px;height:${box.bottom - box.top}px`;
+      block.style.cssText = `display:block;left:${box.left}px;top:${box.top}px;width:${box.right - box.left}px;height:${box.bottom - box.top}px`;
+    };
+    showMasks();
+    const fits = positionTutorialCallout(box);
+    if (!fits) {
+      // The caption genuinely can't sit near this spotlight without being
+      // cramped into a tiny scrolling box (a target that fills most of the
+      // screen, usually) — better to skip the blur for this one step than
+      // force her to scroll a two-line window to read it.
+      hideSpotlight();
+    }
   }
 
+  // Positions the caption card relative to a spotlight box, never letting it
+  // overlap the clear/spotlighted area. Returns false if there just isn't a
+  // reasonable amount of room on either side — the caller then skips the
+  // blur entirely for this step rather than cramming the caption into a tiny
+  // scrolling window (which is confusing and easy to miss).
+  const TUT_CALLOUT_MIN_USABLE = 100;
   function positionTutorialCallout(box) {
     const callout = $('tutCallout');
     callout.style.maxHeight = '';
@@ -1596,33 +1605,36 @@ const App = (() => {
     const vh = window.innerHeight;
     const gap = 14;
     const edgeMargin = 10;
-    if (!box) { callout.style.top = ''; callout.style.bottom = '18px'; return; }
+    if (!box) { callout.style.top = ''; callout.style.bottom = '18px'; return true; }
     // Try sitting right below the spotlighted area first (measuring its real,
     // current height — title/body are already set by this point).
     callout.style.bottom = '';
     callout.style.top = (box.bottom + gap) + 'px';
     const spaceBelow = vh - (box.bottom + gap) - edgeMargin;
-    if (callout.offsetHeight <= spaceBelow) return;
+    if (callout.offsetHeight <= spaceBelow) return true;
     // Doesn't fit below — try sitting just above it instead, growing upward
     // from there so its real height (unknown until rendered) never matters.
     callout.style.top = '';
     callout.style.bottom = Math.max(14, vh - box.top + gap) + 'px';
     const spaceAbove = box.top - gap - edgeMargin;
-    if (callout.offsetHeight <= spaceAbove) return;
-    // Neither side has full room for the card (a tall spotlight + long
-    // caption on a short screen) — rather than ever overlapping the clear
-    // spotlighted area, pin it to whichever side has more room and let its
-    // text scroll internally within that space.
+    if (callout.offsetHeight <= spaceAbove) return true;
+    // Neither side has full room for the card. If one side at least has a
+    // reasonable amount of space, sit there with a small internal scroll
+    // (a couple of lines of body text, at most) rather than overlap the
+    // spotlight. If not, tell the caller to give up on blurring this step.
+    const best = Math.max(spaceBelow, spaceAbove);
+    if (best < TUT_CALLOUT_MIN_USABLE) return false;
     if (spaceBelow >= spaceAbove) {
       callout.style.bottom = '';
       callout.style.top = (box.bottom + gap) + 'px';
-      callout.style.maxHeight = Math.max(120, spaceBelow) + 'px';
+      callout.style.maxHeight = spaceBelow + 'px';
     } else {
       callout.style.top = '';
       callout.style.bottom = Math.max(14, vh - box.top + gap) + 'px';
-      callout.style.maxHeight = Math.max(120, spaceAbove) + 'px';
+      callout.style.maxHeight = spaceAbove + 'px';
     }
     callout.style.overflowY = 'auto';
+    return true;
   }
 
   function markChapterSeen(chapterId) {
@@ -1689,7 +1701,7 @@ const App = (() => {
     pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll, setUnits, setEntryUnits, skipExercise,
     markManualComplete, checkForUpdates,
     setTodayTime, clearTodayTime, renderSettingsVisibility, logWeighIn,
-    openExerciseDetail, closeExerciseDetail, openCurrentStepDetail, toggleCurrentLiked,
+    openExerciseDetail, closeExerciseDetail, toggleCurrentLiked,
     updateQuranHint, quranPlay, quranTogglePlay, quranNext, quranPrev,
     fixNotifications,
     renderTutorialScreen, startTutorialChapter, startTutorialAll, replayTutorialFromStart,
