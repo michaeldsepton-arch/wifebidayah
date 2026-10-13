@@ -101,7 +101,7 @@ button { font-family: inherit; }
 .hero .sub { color: var(--fg-dim); font-size: 14.5px; position: relative; }
 .hero > * { position: relative; }
 
-.week-dots { display: flex; gap: 8px; margin-top: 4px; }
+.week-dots { display: flex; justify-content: space-between; gap: 4px; margin-top: 4px; }
 .week-dots .dot {
   width: 30px; height: 30px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
@@ -164,13 +164,18 @@ button { font-family: inherit; }
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0;
   display: flex; justify-content: center;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* The 20px side gutter lives here, as padding, so it reduces the width available
+     to .tabbar-inner instead of sitting outside it — a margin on a width:100% child
+     adds on top of that 100% rather than being subtracted from it, which is what
+     was pushing the bar's right edge off-screen. */
+  padding: 0 20px env(safe-area-inset-bottom, 0px);
   background: linear-gradient(180deg, transparent, var(--bg) 30%);
+  box-sizing: border-box;
 }
 .tabbar-inner {
   max-width: 440px; width: 100%; display: flex;
   background: var(--bg-elevated); border: 1px solid var(--card-border);
-  border-radius: var(--radius-l); margin: 0 20px 14px; padding: 8px;
+  border-radius: var(--radius-l); margin: 0 auto 14px; padding: 8px;
   box-shadow: var(--shadow); box-sizing: border-box;
 }
 .tab {
@@ -203,9 +208,24 @@ button { font-family: inherit; }
 }
 .media-toggle button.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 
-.timer-ring-wrap { display: flex; justify-content: center; padding: 10px 0; }
-.timer-num { font-family: var(--font-display); font-size: 56px; font-variant-numeric: tabular-nums; }
-.timer-sub { text-align: center; color: var(--fg-dim); font-size: 14px; }
+#playerTimerBlock { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 4px 0 2px; }
+
+.timer-ring-wrap { position: relative; width: 172px; height: 172px; display: flex; align-items: center; justify-content: center; }
+.timer-ring { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.timer-ring-track { fill: none; stroke: var(--card-border); stroke-width: 6; }
+.timer-ring-fill {
+  fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round;
+  transition: stroke-dashoffset 0.9s linear;
+}
+/* A real monospace stack guarantees every digit has the same advance width, so the
+   countdown can never visually "wobble" from side to side as the seconds change —
+   font-variant-numeric alone isn't trustworthy across display fonts. */
+.timer-num {
+  font-family: ui-monospace, 'SF Mono', 'Roboto Mono', 'Courier New', monospace;
+  font-size: 38px; font-weight: 700; color: var(--fg); letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1;
+}
+.timer-sub { text-align: center; color: var(--fg-dim); font-size: 14px; min-height: 1.3em; }
 
 .reps-badge {
   align-self: center; display: inline-flex; font-size: 13px; font-weight: 700;
@@ -223,7 +243,8 @@ button { font-family: inherit; }
 .progress-track { height: 5px; background: var(--card-border); border-radius: 3px; overflow: hidden; }
 .progress-track > div { height: 100%; background: var(--accent); }
 
-.set-pips { display: flex; gap: 6px; justify-content: center; }
+.set-pips { display: flex; gap: 6px; justify-content: center; min-height: 8px; }
+.set-pips:empty { display: none; }
 .set-pips span { width: 8px; height: 8px; border-radius: 50%; background: var(--card-border); }
 .set-pips span.done { background: var(--accent); }
 

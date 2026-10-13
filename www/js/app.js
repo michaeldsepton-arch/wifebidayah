@@ -5,6 +5,18 @@ const App = (() => {
   const PHASE_ICON = { rest:'○', transition:'➜', warmup:'✦', cooldown:'✦' };
   const PHASE_LABEL = { work:'WORK', rest:'REST', warmup:'WARM-UP', cooldown:'COOL-DOWN', transition:'GET READY' };
   const CAP_TEST_MAX_SEC = 600; // safety ceiling for an open-ended "hold as long as you can"
+  const RING_R = 52;
+  const RING_CIRC = 2 * Math.PI * RING_R;
+
+  // Drives the circular progress ring around the countdown: `fraction` is how much
+  // of the ring should still be lit (1 = full circle, 0 = empty).
+  function updateRing(fraction) {
+    const el = $('playerRingFill');
+    if (!el) return;
+    const f = Math.max(0, Math.min(1, fraction));
+    el.style.strokeDasharray = String(RING_CIRC);
+    el.style.strokeDashoffset = String(RING_CIRC * (1 - f));
+  }
 
   let session = null;   // active player session
   let timerId = null;
@@ -325,21 +337,23 @@ const App = (() => {
     if (!workout) return;
     const isCircuit = workout.type === 'circuit';
     const items = [
-      ...workout.warmup.map(w => ({ id: w.id, name: w.name, meta: 'Warm-up · ' + w.duration + 's', icon: '○', images: w.images })),
+      ...workout.warmup.map(w => ({ id: w.id, name: w.name, meta: 'Warm-up · ' + w.duration + 's', icon: '○', images: w.images, video: w.video })),
       ...workout.blocks.map(b => ({
         id: b.exerciseId, name: b.name,
         meta: b.sets + (isCircuit ? ' rounds · ' : ' sets · ') + (b.timeBased ? b.duration + 's' : b.reps),
         icon: PATTERN_ICON[b.pattern] || '●',
         images: b.images,
+        video: b.video,
       })),
-      ...workout.cooldown.map(c => ({ id: c.id, name: c.name, meta: 'Cool-down · ' + c.duration + 's', icon: '○', images: c.images })),
+      ...workout.cooldown.map(c => ({ id: c.id, name: c.name, meta: 'Cool-down · ' + c.duration + 's', icon: '○', images: c.images, video: c.video })),
     ];
     items.forEach(it => {
       const row = document.createElement('div');
       row.className = 'plan-item';
       row.style.cursor = 'pointer';
-      const tag = (it.images && it.images.length)
-        ? `<div class="tag img"><img src="${it.images[0]}" alt="" loading="lazy"></div>`
+      const thumbSrc = it.video ? `https://i.ytimg.com/vi/${it.video}/hqdefault.jpg` : (it.images && it.images.length ? it.images[0] : null);
+      const tag = thumbSrc
+        ? `<div class="tag img"><img src="${thumbSrc}" alt="" loading="lazy"></div>`
         : `<div class="tag">${it.icon}</div>`;
       row.innerHTML = `${tag}<div><div class="name">${escapeHtml(it.name)}</div><div class="meta">${it.meta}</div></div>`;
       row.onclick = () => openExerciseDetail(it.id);
@@ -544,8 +558,10 @@ const App = (() => {
     } else {
       session.remaining = step.isCapabilityTest ? 0 : step.duration;
       session.countUp = !!step.isCapabilityTest;
+      session.total = session.countUp ? CAP_TEST_MAX_SEC : step.duration;
       $('playerTimer').textContent = fmtTime(session.remaining);
       $('playerSub').textContent = subLabel(step);
+      updateRing(session.countUp ? session.remaining / session.total : 1);
       if (step.phase === 'rest' || step.phase === 'transition') {
         // Nothing to "get ready" for here — rest and changeovers just flow automatically.
         $('playerSkipBtn').style.display = '';
@@ -639,10 +655,12 @@ const App = (() => {
       if (session.countUp) {
         session.remaining += 1;
         $('playerTimer').textContent = fmtTime(session.remaining);
+        updateRing(session.remaining / session.total);
         if (session.remaining >= CAP_TEST_MAX_SEC) finishTimedStep(true);
       } else {
         session.remaining -= 1;
         $('playerTimer').textContent = fmtTime(session.remaining);
+        updateRing(session.remaining / session.total);
         if (session.remaining <= 0) finishTimedStep(true);
       }
     }, 1000);

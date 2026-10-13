@@ -112,9 +112,15 @@
 
       <!-- Timer mode: rest / transitions / genuinely time-based holds -->
       <div id="playerTimerBlock">
-        <div class="timer-ring-wrap"><div class="timer-num" id="playerTimer">00:30</div></div>
-        <div class="timer-sub" id="playerSub">tap start when ready</div>
+        <div class="timer-ring-wrap">
+          <svg class="timer-ring" viewBox="0 0 120 120">
+            <circle class="timer-ring-track" cx="60" cy="60" r="52"></circle>
+            <circle class="timer-ring-fill" id="playerRingFill" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="timer-num" id="playerTimer">00:30</div>
+        </div>
         <div class="set-pips" id="playerPips"></div>
+        <div class="timer-sub" id="playerSub">tap start when ready</div>
         <div class="player-controls">
           <button class="btn btn-ghost" id="playerSkipBtn" onclick="App.playerSkip()">Skip</button>
           <button class="btn btn-primary" id="playerActionBtn" onclick="App.playerAction()">Start</button>
