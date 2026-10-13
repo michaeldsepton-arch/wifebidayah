@@ -7,8 +7,11 @@ android {
         applicationId "com.sepphouse.bidayah"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // CI passes -PappVersionCode=<github.run_number> so every build has a
+        // strictly higher versionCode than the last, which Android requires
+        // for an "update" install to be accepted. Falls back to 1 for local builds.
+        versionCode project.hasProperty('appVersionCode') ? appVersionCode.toInteger() : 1
+        versionName project.hasProperty('appVersionCode') ? "1.0.${appVersionCode}" : "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +19,28 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        // A fixed, permanent signing key for this app (debug AND release use it).
+        // This is what lets "install over the existing app" (an update) succeed:
+        // Android refuses to install an update unless it's signed with the exact
+        // same certificate as what's already on the phone. Previously the debug
+        // build type used Gradle's implicit ~/.android/debug.keystore, which
+        // GitHub Actions regenerates with a brand-new random key on every run,
+        // so every single release so far was signed differently from the last
+        // and every "update" install failed with "App not installed".
+        bidayah {
+            storeFile file('bidayah-release.keystore')
+            storePassword 'bidayahFitness2026'
+            keyAlias 'bidayah'
+            keyPassword 'bidayahFitness2026'
+        }
+    }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.bidayah
+        }
         release {
+            signingConfig signingConfigs.bidayah
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
