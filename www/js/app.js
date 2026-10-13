@@ -14,13 +14,13 @@ const App = (() => {
   const TUTORIAL_CHAPTERS = [
     { id:'home', title:'Your Daily Workout', icon:'◧', image:'img/tutorial/home.png', steps:[
       { title:'Home is your starting point', body:"Today's workout is already built for you — matched to your schedule, your equipment, and how far you've progressed. Just tap Start." },
-      { title:'Streak & stats', body:'The numbers up top track your streak and total sessions, so you can see your consistency build over time.' },
+      { title:'Streak & stats', image:'img/tutorial/home_stats.png', body:'The numbers up top track your streak and total sessions, so you can see your consistency build over time.' },
     ]},
     { id:'player', title:'During a Workout', icon:'▲', steps:[
       { title:'Timer or reps', image:'img/tutorial/player_timer.png', body:'Each move shows a video and step-by-step instructions. It\'s either a countdown timer (for holds and timed moves) or a spot to log your reps — and weight, if it needs one.' },
       { title:'Sets vs. Rounds', image:'img/tutorial/player_sets.png', body:'"Set 2 of 4" means the same move again, with rest in between. "Round 2 of 5" means a circuit — you\'ll do a few different moves, then come back to this one again in the next round.' },
       { title:'Made a mistake?', image:'img/tutorial/player_sets.png', body:'Tap the back arrow (top-left) to go back a step — all the way through the workout if you need to, set by set, exercise by exercise.' },
-      { title:'Want to move on?', image:'img/tutorial/player_entry.png', body:'"Skip this exercise" jumps past every remaining set of the current move, straight to the next one.' },
+      { title:'Want to move on?', image:'img/tutorial/player_skip.png', body:'"Skip this exercise" jumps past every remaining set of the current move, straight to the next one.' },
     ]},
     { id:'rest', title:'Rest Screens', icon:'○', image:'img/tutorial/rest.png', steps:[
       { title:'Between sets & rounds', body:"A short rest automatically counts down between sets of the same move, and before each new circuit round — with a preview of what's coming up next so you always know what to expect." },
@@ -1431,6 +1431,15 @@ const App = (() => {
     renderTutorialStep();
   }
 
+  // "Replay from the start" on the Tutorial tab — walks through every chapter
+  // in order, same as the first-run sequence, but manually (not gated by
+  // tutorialSeen) so it always runs when she taps it.
+  function replayTutorialFromStart() {
+    tutorial = { chapterIds: TUTORIAL_CHAPTERS.map(c => c.id), chapterIdx: 0, stepIdx: 0, auto: false };
+    showScreen('screen-tutorial-player');
+    renderTutorialStep();
+  }
+
   function currentTutorialChapter() {
     return TUTORIAL_CHAPTERS.find(c => c.id === tutorial.chapterIds[tutorial.chapterIdx]);
   }
@@ -1444,7 +1453,18 @@ const App = (() => {
     $('tutStepBody').textContent = step.body;
     const img = $('tutStepImage');
     const src = step.image || ch.image;
-    if (src) { img.src = src; img.style.display = ''; } else { img.style.display = 'none'; }
+    if (src) {
+      // Cache-bust on the app build so a device that cached an old copy of
+      // this file (from a previous install/update) always fetches the
+      // current one instead of silently showing nothing.
+      img.onerror = () => { img.style.display = 'none'; };
+      img.onload = () => { img.style.display = ''; };
+      img.style.display = '';
+      img.src = `${src}?v=${APP_BUILD}`;
+    } else {
+      img.removeAttribute('src');
+      img.style.display = 'none';
+    }
     window.scrollTo(0, 0);
 
     const dots = $('tutStepDots'); dots.innerHTML = '';
@@ -1459,7 +1479,7 @@ const App = (() => {
     const isLastChapter = tutorial.chapterIdx === tutorial.chapterIds.length - 1;
     $('tutNextBtn').textContent = (isLastStepOfChapter && isLastChapter) ? 'Done' : (isLastStepOfChapter ? 'Next chapter' : 'Next');
     // Skipping a single chapter only makes sense mid-sequence — hide it otherwise.
-    $('tutSkipChapterBtn').style.display = (tutorial.auto && !isLastChapter) ? '' : 'none';
+    $('tutSkipChapterBtn').style.display = (tutorial.chapterIds.length > 1 && !isLastChapter) ? '' : 'none';
     $('tutProgressLabel').textContent = tutorial.chapterIds.length > 1
       ? `Chapter ${tutorial.chapterIdx + 1} of ${tutorial.chapterIds.length}` : '';
   }
@@ -1501,7 +1521,7 @@ const App = (() => {
   // Skips the rest of the *current chapter* during the first-run sequence,
   // moving straight to the next chapter (or ending, if it was the last one).
   function tutorialSkipChapter() {
-    if (!tutorial || !tutorial.auto) return;
+    if (!tutorial || tutorial.chapterIds.length <= 1) return;
     if (tutorial.chapterIdx < tutorial.chapterIds.length - 1) {
       tutorial.chapterIdx += 1;
       tutorial.stepIdx = 0;
@@ -1527,7 +1547,7 @@ const App = (() => {
     openExerciseDetail, closeExerciseDetail, openCurrentStepDetail, toggleCurrentLiked,
     updateQuranHint, quranPlay, quranTogglePlay, quranNext, quranPrev,
     fixNotifications,
-    renderTutorialScreen, startTutorialChapter, startTutorialAll,
+    renderTutorialScreen, startTutorialChapter, startTutorialAll, replayTutorialFromStart,
     tutorialNext, tutorialBack, tutorialSkipChapter, endTutorial,
   };
 })();
