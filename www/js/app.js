@@ -12,35 +12,35 @@ const App = (() => {
   // Every chapter covers one area of the app. Auto-plays end to end on first
   // open (skippable chapter by chapter); replayable any time from its own tab.
   const TUTORIAL_CHAPTERS = [
-    { id:'home', title:'Your Daily Workout', icon:'◧', steps:[
+    { id:'home', title:'Your Daily Workout', icon:'◧', image:'img/tutorial/home.png', steps:[
       { title:'Home is your starting point', body:"Today's workout is already built for you — matched to your schedule, your equipment, and how far you've progressed. Just tap Start." },
       { title:'Streak & stats', body:'The numbers up top track your streak and total sessions, so you can see your consistency build over time.' },
     ]},
     { id:'player', title:'During a Workout', icon:'▲', steps:[
-      { title:'Timer or reps', body:'Each move shows a video and step-by-step instructions. It\'s either a countdown timer (for holds and timed moves) or a spot to log your reps — and weight, if it needs one.' },
-      { title:'Sets vs. Rounds', body:'"Set 2 of 4" means the same move again, with rest in between. "Round 2 of 5" means a circuit — you\'ll do a few different moves, then come back to this one again in the next round.' },
-      { title:'Made a mistake?', body:'Tap the back arrow (top-left) to go back a step — all the way through the workout if you need to, set by set, exercise by exercise.' },
-      { title:'Want to move on?', body:'"Skip this exercise" jumps past every remaining set of the current move, straight to the next one.' },
+      { title:'Timer or reps', image:'img/tutorial/player_timer.png', body:'Each move shows a video and step-by-step instructions. It\'s either a countdown timer (for holds and timed moves) or a spot to log your reps — and weight, if it needs one.' },
+      { title:'Sets vs. Rounds', image:'img/tutorial/player_sets.png', body:'"Set 2 of 4" means the same move again, with rest in between. "Round 2 of 5" means a circuit — you\'ll do a few different moves, then come back to this one again in the next round.' },
+      { title:'Made a mistake?', image:'img/tutorial/player_sets.png', body:'Tap the back arrow (top-left) to go back a step — all the way through the workout if you need to, set by set, exercise by exercise.' },
+      { title:'Want to move on?', image:'img/tutorial/player_entry.png', body:'"Skip this exercise" jumps past every remaining set of the current move, straight to the next one.' },
     ]},
-    { id:'rest', title:'Rest Screens', icon:'○', steps:[
+    { id:'rest', title:'Rest Screens', icon:'○', image:'img/tutorial/rest.png', steps:[
       { title:'Between sets & rounds', body:"A short rest automatically counts down between sets of the same move, and before each new circuit round — with a preview of what's coming up next so you always know what to expect." },
     ]},
-    { id:'like-media', title:'Liking Moves & Media', icon:'➜', steps:[
+    { id:'like-media', title:'Liking Moves & Media', icon:'➜', image:'img/tutorial/like_media.png', steps:[
       { title:'The heart button', body:'Tap the heart on a move you like and it\'ll show up in your plan more often. Tap the ⓘ any time for a closer look at proper form.' },
       { title:'Always muted', body:'Every video is muted — no music ever plays — and loops quietly so it never just freezes mid-demo.' },
     ]},
-    { id:'weighin', title:'Weigh-Ins', icon:'●', steps:[
+    { id:'weighin', title:'Weigh-Ins', icon:'●', image:'img/tutorial/weighin_banner.png', steps:[
       { title:'Once a week, not every workout', body:'You\'ll be asked to log your weight once a week (Wednesday by default — change the day and time any time in Settings), not after every single workout, so your trend stays accurate.' },
       { title:'kg or lbs — your call', body:'Wherever you enter a weight — your weigh-in, a weighted set, your starting weight — there\'s a small kg/lbs switch right next to the field. It remembers your choice.' },
     ]},
     { id:'progress', title:'Progress Tab', icon:'✦', steps:[
-      { title:'Trend & consistency', body:'See your weight trend, how consistent you\'ve been over the last few weeks, and badges you unlock along the way.' },
-      { title:'Units here are separate', body:'The kg/lbs choice for this tab\'s trend and projection text is set in Settings, on its own — separate from the switches next to each input field.' },
+      { title:'Trend & consistency', image:'img/tutorial/progress.png', body:'See your weight trend, how consistent you\'ve been over the last few weeks, and badges you unlock along the way.' },
+      { title:'Units here are separate', image:'img/tutorial/settings.png', body:'The kg/lbs choice for this tab\'s trend and projection text is set in Settings, on its own — separate from the switches next to each input field.' },
     ]},
-    { id:'settings', title:'Settings', icon:'◂', steps:[
+    { id:'settings', title:'Settings', icon:'◂', image:'img/tutorial/settings.png', steps:[
       { title:'Make it yours', body:'Set your weekly schedule, the equipment you have on hand, prayer-time-based reminders, cycle-aware pacing, your weigh-in day/time, and more — all here.' },
     ]},
-    { id:'quran', title:"Qur'an Player", icon:'◪', steps:[
+    { id:'quran', title:"Qur'an Player", icon:'◪', image:'img/tutorial/quran.png', steps:[
       { title:'Listen any time', body:"Pick a reciter, a surah, and how you'd like it repeated, right from the Qur'an tab." },
     ]},
   ];
@@ -337,6 +337,7 @@ const App = (() => {
   function showScreen(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
     $(id).classList.add('active');
+    window.scrollTo(0, 0);
   }
 
   // ---------------- HOME ----------------
@@ -441,11 +442,13 @@ const App = (() => {
     } else {
       label = "Weigh-in day";
     }
+    el.style.flexDirection = 'column';
+    el.style.alignItems = 'stretch';
     el.innerHTML = `
       <div><div class="t-label" style="font-weight:600">${label}</div><div class="t-sub">Same day and time keeps your trend accurate.</div></div>
-      <div style="display:flex;gap:8px;align-items:center">
-        <input type="number" step="0.1" id="${prefix}WeighInInput" placeholder="${entryUnitLabel()}" style="width:70px">
-        <div class="chip-wrap" id="${prefix}WeighInUnitsToggle">
+      <div style="display:flex;gap:8px;align-items:center;margin-top:10px">
+        <input type="number" step="0.1" id="${prefix}WeighInInput" placeholder="${entryUnitLabel()}" style="flex:1;min-width:0">
+        <div class="chip-wrap" id="${prefix}WeighInUnitsToggle" style="flex-wrap:nowrap">
           <div class="chip" data-id="kg" onclick="App.setEntryUnits('kg')">kg</div>
           <div class="chip" data-id="lbs" onclick="App.setEntryUnits('lbs')">lbs</div>
         </div>
@@ -1439,6 +1442,10 @@ const App = (() => {
     $('tutChapterTitle').textContent = ch.title;
     $('tutStepTitle').textContent = step.title;
     $('tutStepBody').textContent = step.body;
+    const img = $('tutStepImage');
+    const src = step.image || ch.image;
+    if (src) { img.src = src; img.style.display = ''; } else { img.style.display = 'none'; }
+    window.scrollTo(0, 0);
 
     const dots = $('tutStepDots'); dots.innerHTML = '';
     ch.steps.forEach((_, i) => {
