@@ -8,6 +8,43 @@ const App = (() => {
   const RING_R = 52;
   const RING_CIRC = 2 * Math.PI * RING_R;
 
+  // ---------------- TUTORIAL CONTENT ----------------
+  // Every chapter covers one area of the app. Auto-plays end to end on first
+  // open (skippable chapter by chapter); replayable any time from its own tab.
+  const TUTORIAL_CHAPTERS = [
+    { id:'home', title:'Your Daily Workout', icon:'◧', steps:[
+      { title:'Home is your starting point', body:"Today's workout is already built for you — matched to your schedule, your equipment, and how far you've progressed. Just tap Start." },
+      { title:'Streak & stats', body:'The numbers up top track your streak and total sessions, so you can see your consistency build over time.' },
+    ]},
+    { id:'player', title:'During a Workout', icon:'▲', steps:[
+      { title:'Timer or reps', body:'Each move shows a video and step-by-step instructions. It\'s either a countdown timer (for holds and timed moves) or a spot to log your reps — and weight, if it needs one.' },
+      { title:'Sets vs. Rounds', body:'"Set 2 of 4" means the same move again, with rest in between. "Round 2 of 5" means a circuit — you\'ll do a few different moves, then come back to this one again in the next round.' },
+      { title:'Made a mistake?', body:'Tap the back arrow (top-left) to go back a step — all the way through the workout if you need to, set by set, exercise by exercise.' },
+      { title:'Want to move on?', body:'"Skip this exercise" jumps past every remaining set of the current move, straight to the next one.' },
+    ]},
+    { id:'rest', title:'Rest Screens', icon:'○', steps:[
+      { title:'Between sets & rounds', body:"A short rest automatically counts down between sets of the same move, and before each new circuit round — with a preview of what's coming up next so you always know what to expect." },
+    ]},
+    { id:'like-media', title:'Liking Moves & Media', icon:'➜', steps:[
+      { title:'The heart button', body:'Tap the heart on a move you like and it\'ll show up in your plan more often. Tap the ⓘ any time for a closer look at proper form.' },
+      { title:'Always muted', body:'Every video is muted — no music ever plays — and loops quietly so it never just freezes mid-demo.' },
+    ]},
+    { id:'weighin', title:'Weigh-Ins', icon:'●', steps:[
+      { title:'Once a week, not every workout', body:'You\'ll be asked to log your weight once a week (Wednesday by default — change the day and time any time in Settings), not after every single workout, so your trend stays accurate.' },
+      { title:'kg or lbs — your call', body:'Wherever you enter a weight — your weigh-in, a weighted set, your starting weight — there\'s a small kg/lbs switch right next to the field. It remembers your choice.' },
+    ]},
+    { id:'progress', title:'Progress Tab', icon:'✦', steps:[
+      { title:'Trend & consistency', body:'See your weight trend, how consistent you\'ve been over the last few weeks, and badges you unlock along the way.' },
+      { title:'Units here are separate', body:'The kg/lbs choice for this tab\'s trend and projection text is set in Settings, on its own — separate from the switches next to each input field.' },
+    ]},
+    { id:'settings', title:'Settings', icon:'◂', steps:[
+      { title:'Make it yours', body:'Set your weekly schedule, the equipment you have on hand, prayer-time-based reminders, cycle-aware pacing, your weigh-in day/time, and more — all here.' },
+    ]},
+    { id:'quran', title:"Qur'an Player", icon:'◪', steps:[
+      { title:'Listen any time', body:"Pick a reciter, a surah, and how you'd like it repeated, right from the Qur'an tab." },
+    ]},
+  ];
+
   // --- Weight units: everything is stored/computed in kg. There are two
   // independent unit preferences:
   //   settings.units      — how the Progress tab displays trend/projection text.
@@ -248,6 +285,7 @@ const App = (() => {
     ensurePendingWorkout();
     renderHome();
     Notify.ensurePermission().then(() => Notify.refreshSchedule(Store.get()));
+    startTutorialAll();
   }
 
   function toggleSwitch(el) { el.classList.toggle('on'); }
@@ -293,6 +331,7 @@ const App = (() => {
     if (tab === 'progress') renderProgress();
     if (tab === 'settings') renderSettings();
     if (tab === 'quran') renderQuranScreen();
+    if (tab === 'tutorial') renderTutorialScreen();
   }
 
   function showScreen(id) {
@@ -548,16 +587,7 @@ const App = (() => {
   // entry form and a "Finished Set" button instead (item #15/#16).
   function buildSteps(workout) {
     const steps = [];
-    const T = workout.transitionSec || 15;
 
-    function transition(next) {
-      steps.push({
-        phase:'transition', name:'Get ready', nextName: next.name,
-        cue:`Up next: ${next.name}. Take a breath and get into position.`,
-        images: next.images || [], video: next.video || null, pattern: next.pattern,
-        timeBased:true, duration:T,
-      });
-    }
     function workStep(block, setIndex, totalSets) {
       return {
         phase:'work', name:block.name, cue:block.cue, pattern:block.pattern,
@@ -571,11 +601,13 @@ const App = (() => {
       };
     }
 
-    workout.warmup.forEach((w, i) => {
+    // No "Get ready" interstitial between moves — it was an extra screen with
+    // nothing to actually do, so one exercise now leads straight into the next.
+    // The real breathing room (between sets of the same move, and before the
+    // next circuit round) still gets its own Rest step.
+    workout.warmup.forEach((w) => {
       steps.push({ phase:'warmup', name:w.name, cue:w.cue, images:w.images||[], video:w.video||null, steps:w.steps||[], timeBased:true, duration:w.duration, exerciseId:w.id });
-      if (i < workout.warmup.length - 1) transition(workout.warmup[i+1]);
     });
-    if (workout.warmup.length && workout.blocks.length) transition(workout.blocks[0]);
 
     if (workout.type === 'circuit' && workout.blocks.length) {
       const rounds = workout.blocks[0].sets;
@@ -586,25 +618,20 @@ const App = (() => {
           if (lastInRound && r < rounds) {
             const upNext = workout.blocks[0];
             steps.push({ phase:'rest', name:'Rest before next round', nextName: upNext.name, cue:'Shake it out, sip some water — next round starts soon.', images: upNext.images||[], video: upNext.video||null, pattern: upNext.pattern, timeBased:true, duration: block.restSec });
-          } else if (!lastInRound) {
-            transition(workout.blocks[i+1]);
           }
         });
       }
     } else {
-      workout.blocks.forEach((block, bi) => {
+      workout.blocks.forEach((block) => {
         for (let s=1; s<=block.sets; s++) {
           steps.push(workStep(block, s, block.sets));
           if (s < block.sets) steps.push({ phase:'rest', name:'Rest', nextName: block.name, cue:'Catch your breath, shake it out.', images: block.images||[], video: block.video||null, pattern: block.pattern, timeBased:true, duration: block.restSec });
         }
-        if (bi < workout.blocks.length - 1) transition(workout.blocks[bi+1]);
       });
     }
 
-    if (workout.blocks.length && workout.cooldown.length) transition(workout.cooldown[0]);
-    workout.cooldown.forEach((c, i) => {
+    workout.cooldown.forEach((c) => {
       steps.push({ phase:'cooldown', name:c.name, cue:c.cue, images:c.images||[], video:c.video||null, steps:c.steps||[], timeBased:true, duration:c.duration, exerciseId:c.id });
-      if (i < workout.cooldown.length - 1) transition(workout.cooldown[i+1]);
     });
 
     return steps;
@@ -630,8 +657,13 @@ const App = (() => {
 
     const setIndicator = $('playerSetIndicator');
     if (step.phase === 'work' && step.totalSets > 1) {
-      const noun = session.workout.type === 'circuit' ? 'Round' : 'Set';
-      setIndicator.textContent = `${noun} ${step.setIndex} of ${step.totalSets}`;
+      const isCircuit = session.workout.type === 'circuit';
+      const noun = isCircuit ? 'Round' : 'Set';
+      // Rounds are easy to misread as "nothing happened" the first time, since the
+      // player visibly moves to a *different* exercise between rounds of the same
+      // one — spell it out just once, on the first round.
+      const hint = (isCircuit && step.setIndex === 1) ? ` — you'll repeat this each round` : '';
+      setIndicator.textContent = `${noun} ${step.setIndex} of ${step.totalSets}${hint}`;
       setIndicator.style.display = '';
     } else {
       setIndicator.style.display = 'none';
@@ -1354,6 +1386,131 @@ const App = (() => {
     location.reload();
   }
 
+  // ---------------- TUTORIAL ----------------
+  // One small state machine drives both the first-run auto-play (every chapter,
+  // chapter-skippable) and manually opening a single chapter from its own tab.
+  let tutorial = null; // { chapterIds, chapterIdx, stepIdx, auto }
+
+  function renderTutorialScreen() {
+    const state = Store.get();
+    const wrap = $('tutorialChapterList'); if (!wrap) return;
+    wrap.innerHTML = '';
+    TUTORIAL_CHAPTERS.forEach(ch => {
+      const seen = !!state.tutorialChaptersSeen[ch.id];
+      const row = document.createElement('div');
+      row.className = 'tut-chapter-row';
+      row.innerHTML = `
+        <div class="tut-chapter-icon">${ch.icon}</div>
+        <div class="tut-chapter-meta">
+          <div class="t-label" style="font-weight:600">${escapeHtml(ch.title)}</div>
+          <div class="t-sub">${ch.steps.length} ${ch.steps.length === 1 ? 'topic' : 'topics'}${seen ? ' · watched' : ''}</div>
+        </div>
+        <button class="btn btn-ghost btn-sm" onclick="App.startTutorialChapter('${ch.id}')">${seen ? 'Replay' : 'Watch'}</button>`;
+      wrap.appendChild(row);
+    });
+  }
+
+  function startTutorialChapter(chapterId) {
+    const idx = TUTORIAL_CHAPTERS.findIndex(c => c.id === chapterId);
+    if (idx < 0) return;
+    tutorial = { chapterIds: [TUTORIAL_CHAPTERS[idx].id], chapterIdx: 0, stepIdx: 0, auto: false };
+    showScreen('screen-tutorial-player');
+    renderTutorialStep();
+  }
+
+  // Auto-plays every chapter in order, right after onboarding finishes. Safe to
+  // call any time — it's a no-op once she's already been through it (she can
+  // still replay any chapter on her own from the Tutorial tab).
+  function startTutorialAll() {
+    if (Store.get().tutorialSeen) return;
+    tutorial = { chapterIds: TUTORIAL_CHAPTERS.map(c => c.id), chapterIdx: 0, stepIdx: 0, auto: true };
+    showScreen('screen-tutorial-player');
+    renderTutorialStep();
+  }
+
+  function currentTutorialChapter() {
+    return TUTORIAL_CHAPTERS.find(c => c.id === tutorial.chapterIds[tutorial.chapterIdx]);
+  }
+
+  function renderTutorialStep() {
+    if (!tutorial) return;
+    const ch = currentTutorialChapter();
+    const step = ch.steps[tutorial.stepIdx];
+    $('tutChapterTitle').textContent = ch.title;
+    $('tutStepTitle').textContent = step.title;
+    $('tutStepBody').textContent = step.body;
+
+    const dots = $('tutStepDots'); dots.innerHTML = '';
+    ch.steps.forEach((_, i) => {
+      const d = document.createElement('span');
+      if (i === tutorial.stepIdx) d.classList.add('on');
+      dots.appendChild(d);
+    });
+
+    $('tutBackBtn').style.visibility = (tutorial.stepIdx > 0) ? 'visible' : 'hidden';
+    const isLastStepOfChapter = tutorial.stepIdx === ch.steps.length - 1;
+    const isLastChapter = tutorial.chapterIdx === tutorial.chapterIds.length - 1;
+    $('tutNextBtn').textContent = (isLastStepOfChapter && isLastChapter) ? 'Done' : (isLastStepOfChapter ? 'Next chapter' : 'Next');
+    // Skipping a single chapter only makes sense mid-sequence — hide it otherwise.
+    $('tutSkipChapterBtn').style.display = (tutorial.auto && !isLastChapter) ? '' : 'none';
+    $('tutProgressLabel').textContent = tutorial.chapterIds.length > 1
+      ? `Chapter ${tutorial.chapterIdx + 1} of ${tutorial.chapterIds.length}` : '';
+  }
+
+  function markChapterSeen(chapterId) {
+    Store.set(s => { s.tutorialChaptersSeen[chapterId] = true; return s; });
+  }
+
+  function tutorialNext() {
+    if (!tutorial) return;
+    const ch = currentTutorialChapter();
+    if (tutorial.stepIdx < ch.steps.length - 1) {
+      tutorial.stepIdx += 1;
+      renderTutorialStep();
+      return;
+    }
+    markChapterSeen(ch.id);
+    if (tutorial.chapterIdx < tutorial.chapterIds.length - 1) {
+      tutorial.chapterIdx += 1;
+      tutorial.stepIdx = 0;
+      renderTutorialStep();
+    } else {
+      endTutorial();
+    }
+  }
+
+  function tutorialBack() {
+    if (!tutorial) return;
+    if (tutorial.stepIdx > 0) {
+      tutorial.stepIdx -= 1;
+      renderTutorialStep();
+    } else if (tutorial.chapterIdx > 0) {
+      tutorial.chapterIdx -= 1;
+      tutorial.stepIdx = currentTutorialChapter().steps.length - 1;
+      renderTutorialStep();
+    }
+  }
+
+  // Skips the rest of the *current chapter* during the first-run sequence,
+  // moving straight to the next chapter (or ending, if it was the last one).
+  function tutorialSkipChapter() {
+    if (!tutorial || !tutorial.auto) return;
+    if (tutorial.chapterIdx < tutorial.chapterIds.length - 1) {
+      tutorial.chapterIdx += 1;
+      tutorial.stepIdx = 0;
+      renderTutorialStep();
+    } else {
+      endTutorial();
+    }
+  }
+
+  function endTutorial() {
+    const wasAuto = tutorial && tutorial.auto;
+    tutorial = null;
+    Store.set(s => { s.tutorialSeen = true; return s; });
+    if (wasAuto) { goto('home'); } else { goto('tutorial'); }
+  }
+
   return {
     init, onboardNext, finishOnboarding, toggleSwitch, goto,
     startWorkout, reroll, playerAction, playerSkip, playerBack, exitPlayer, setMediaFrame, finishSet,
@@ -1363,6 +1520,8 @@ const App = (() => {
     openExerciseDetail, closeExerciseDetail, openCurrentStepDetail, toggleCurrentLiked,
     updateQuranHint, quranPlay, quranTogglePlay, quranNext, quranPrev,
     fixNotifications,
+    renderTutorialScreen, startTutorialChapter, startTutorialAll,
+    tutorialNext, tutorialBack, tutorialSkipChapter, endTutorial,
   };
 })();
 

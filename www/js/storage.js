@@ -59,6 +59,11 @@ const Store = (() => {
     pendingWorkout: null,
     // the time she picked today to work out: { date: 'YYYY-MM-DD', time: 'HH:MM' }
     plannedTime: null,
+    // true once she's been through the first-run tutorial (fully or skipped) —
+    // stops it from auto-playing again; she can still replay it from its own tab
+    tutorialSeen: false,
+    // chapterId -> true for each tutorial chapter she's watched at least once
+    tutorialChaptersSeen: {},
   };
 
   function load() {
