@@ -17,8 +17,26 @@ const Generator = (() => {
   // before it ever reaches the player — liking/rotation scoring below still happens
   // on the original entry, so "liking" the hard version still works even while she's
   // building up to it on the easier one.
+  //
+  // Ladder members (see LADDERS in exercises.js) work the same way but are keyed by
+  // the whole ladder, not the specific exercise: whichever rung pickExercise() would
+  // normally have landed on for a pattern slot, if she has an active chosen rung for
+  // that ladder it always resolves to HER rung instead — that's what makes "every
+  // slot that would land on any push-up variant becomes her push-up progression"
+  // actually work. Until she opts in (picks a rung from "Easier alternatives" for
+  // the first time), there's no stored preference yet and behavior is unchanged:
+  // normal tier-based rotation across all of that ladder's rungs, same as any other
+  // exercise.
   function resolvePreferred(state, ex) {
     if (!ex) return ex;
+    if (ex.ladder) {
+      const rungId = Progress.currentLadderRungId(state, ex.ladder, null);
+      if (rungId) {
+        const target = byId(rungId);
+        if (target) return target;
+      }
+      return ex;
+    }
     const pref = state.exercisePrefs && state.exercisePrefs[ex.id];
     if (pref && pref.useAlt && ex.altId) {
       const alt = byId(ex.altId);
@@ -161,6 +179,11 @@ const Generator = (() => {
       suggestedWeightKg = sug.suggestedKg;
       overloadNote = sug.note;
       repTarget = `${Progress.REP_TARGET_LO}-${Progress.REP_TARGET_HI}`;
+    } else if (ex.ladder) {
+      // Bodyweight build-up ladder step (push-up, plank, pull-up, etc.) — no weight
+      // involved, but still worth a "last time / aim for" note so progress toward
+      // the next rung is visible the same way weighted and hold-based moves show it.
+      overloadNote = Progress.suggestBodyweightReps(state, ex).note;
     }
 
     const workSec = ex.timeBased ? (duration || ex.duration) : estimateWorkSeconds(ex, tempo);

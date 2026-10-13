@@ -475,6 +475,30 @@ canvas.sparkline { width: 100%; height: 90px; display: block; }
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .modal-head h2 { font-size: 19px; }
 
+/* ---------- Build-up ladder picker rows ---------- */
+.ladder-rung {
+  display: flex; align-items: center; gap: 12px; padding: 10px;
+  border: 1.5px solid var(--card-border); border-radius: 16px;
+  background: rgba(255,255,255,0.02); cursor: pointer; transition: border-color .15s ease, background .15s ease;
+}
+.ladder-rung:active { transform: scale(0.98); }
+.ladder-rung.active { border-color: var(--accent-strong); background: var(--accent-soft); }
+.ladder-rung.disabled { opacity: 0.5; }
+.ladder-rung.disabled .ladder-rung-hint { color: var(--bad, #c97b6a); }
+.ladder-rung-thumb {
+  width: 52px; height: 52px; border-radius: 12px; overflow: hidden; flex-shrink: 0;
+  background: var(--bg-elevated); display: flex; align-items: center; justify-content: center;
+}
+.ladder-rung-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.ladder-rung-icon { font-size: 20px; color: var(--fg-faint); }
+.ladder-rung-info { flex: 1; min-width: 0; }
+.ladder-rung-name { font-size: 14px; font-weight: 600; color: var(--fg); }
+.ladder-rung-hint { font-size: 12px; color: var(--fg-faint); margin-top: 2px; }
+.ladder-rung-badge {
+  font-size: 10.5px; font-weight: 700; color: var(--accent-strong);
+  border: 1px solid var(--accent-strong); border-radius: 10px; padding: 3px 8px; flex-shrink: 0;
+}
+
 /* ---------- Consistency bars (Progress screen) ---------- */
 .consistency-bars { display: flex; align-items: flex-end; gap: 8px; height: 90px; }
 .cbar { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; height: 100%; justify-content: flex-end; }

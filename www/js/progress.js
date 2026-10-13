@@ -214,6 +214,75 @@ const Progress = (() => {
     return state;
   }
 
+  // ---------- Build-up ladders (progressive bodyweight regressions) ----------
+  // A ladder preference is stored under its own namespaced key (never collides with
+  // a real exercise id, which never contains a colon) so it's independent of the
+  // legacy single-step useAlt toggle above.
+  function ladderPrefKey(ladderId) { return 'ladder:' + ladderId; }
+
+  // Returns null when she hasn't opted into this ladder yet (no stored preference) —
+  // callers decide their own fallback. resolvePreferred() in generator.js treats
+  // null as "no override, leave normal rotation alone"; UI code that always needs
+  // *something* to show passes its own fallback (usually the easiest rung).
+  function currentLadderRungId(state, ladderId, fallbackId) {
+    const pref = state.exercisePrefs[ladderPrefKey(ladderId)];
+    if (pref && pref.rungId) return pref.rungId;
+    return fallbackId != null ? fallbackId : null;
+  }
+
+  function setLadderRung(state, ladderId, rungId) {
+    const p = state.exercisePrefs[ladderPrefKey(ladderId)] || {};
+    p.rungId = rungId;
+    state.exercisePrefs[ladderPrefKey(ladderId)] = p;
+    return state;
+  }
+
+  function parseRepsUpper(repsStr) {
+    if (!repsStr) return null;
+    const m = String(repsStr).match(/(\d+)(?:-(\d+))?/);
+    if (!m) return null;
+    return m[2] ? +m[2] : +m[1];
+  }
+
+  // Note shown on a bodyweight (non-weighted) ladder step's entry screen. Keyed off
+  // the exact rung's own performance history — which means the very first time she's
+  // on a given rung (whether she just advanced into it, picked it herself, or it's
+  // literally her first session) there's no history yet, so she naturally gets the
+  // "first time on this step" framing with no extra bookkeeping needed.
+  function suggestBodyweightReps(state, ex) {
+    const perf = state.exercisePerf[ex.id];
+    if (!perf || perf.lastReps == null) {
+      return { note: `First time on ${ex.name} — aim for ${ex.reps || 'a comfortable number of'} reps and we'll build from there.` };
+    }
+    const hi = parseRepsUpper(ex.reps);
+    if (hi != null && perf.lastReps >= hi) {
+      return { note: `Last time: ${perf.lastReps} reps — right at the top of the range, nice work. Keep aiming for ${ex.reps} today.` };
+    }
+    return { note: `Last time: ${perf.lastReps} reps — aim for ${ex.reps || 'a little more'} today.` };
+  }
+
+  // Called right after a ladder-member set/hold is recorded (never for anything
+  // else). Only ever moves her UP a rung, and only when she comfortably clears the
+  // top of the current rung's prescribed range — moving back down is always her own
+  // choice, made explicitly from the "Easier alternatives" list, never automatic.
+  function recordLadderAttempt(state, ex, result) {
+    if (!ex || !ex.ladder) return state;
+    const rungIds = LADDERS[ex.ladder] || [];
+    const idx = rungIds.indexOf(ex.id);
+    if (idx < 0 || idx >= rungIds.length - 1) return state; // not in this ladder, or already at the top
+
+    let success = false;
+    if (ex.timeBased) {
+      const threshold = (ex.duration || 20) * 2;
+      success = result && result.holdSec != null && result.holdSec >= threshold;
+    } else {
+      const hi = parseRepsUpper(ex.reps);
+      success = hi != null && result && result.reps != null && result.reps >= hi;
+    }
+    if (success) setLadderRung(state, ex.ladder, rungIds[idx + 1]);
+    return state;
+  }
+
   // ---------- Progressive overload: weighted / rep-based exercises ----------
   // Target band is 6-10 reps. Below it, drop weight (even next set, same session);
   // above it, add weight. Persists per-exercise so the NEXT time this move comes up
@@ -274,5 +343,6 @@ const Progress = (() => {
     recordCompletion, logWeight, weightTrend, isoWeekKey, weighInStatus, consistencyStats,
     expectedProgress, toggleLiked, setUseAlt, suggestNext, recordSetPerformance,
     suggestHoldTarget, recordHoldPerformance, REP_TARGET_LO, REP_TARGET_HI,
+    currentLadderRungId, setLadderRung, suggestBodyweightReps, recordLadderAttempt,
   };
 })();

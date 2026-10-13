@@ -595,6 +595,7 @@ const App = (() => {
     const isRealExercise = EXERCISES.some(e => e.id === ex.id);
     $('detailPrefRow').style.display = isRealExercise ? 'flex' : 'none';
     $('detailAltRow').style.display = 'none';
+    $('detailLadderRow').style.display = 'none';
 
     if (isRealExercise) {
       const state = Store.get();
@@ -603,7 +604,12 @@ const App = (() => {
       likeBtn.classList.toggle('on', !!pref.liked);
       likeBtn.onclick = () => { Store.set(s => Progress.toggleLiked(s, ex.id)); openExerciseDetail(id); };
 
-      if (ex.altId) {
+      if (ex.ladder) {
+        // Ladder members get the richer multi-step "Easier alternatives" picker
+        // instead of the old single on/off toggle below.
+        $('detailLadderRow').style.display = 'flex';
+        $('detailLadderBtn').onclick = () => openLadderModal(ex.ladder);
+      } else if (ex.altId) {
         const alt = Generator.byId(ex.altId);
         $('detailAltRow').style.display = 'flex';
         $('detailAltLabel').textContent = alt ? `Use easier version (${alt.name}) next time` : 'Use easier version next time';
@@ -617,6 +623,70 @@ const App = (() => {
       }
     }
     $('exerciseDetail').style.display = 'flex';
+  }
+
+  // ---------- Build-up ladders ("Easier alternatives") ----------
+  function ladderThumbHtml(ex) {
+    if (ex.video) return `<img src="https://i.ytimg.com/vi/${ex.video}/default.jpg" alt="">`;
+    const icon = PATTERN_ICON[ex.pattern] || '●';
+    return `<div class="ladder-rung-icon">${icon}</div>`;
+  }
+
+  function openLadderModal(ladderId) {
+    const rungIds = LADDERS[ladderId] || [];
+    const rungs = rungIds.map(id => Generator.byId(id)).filter(Boolean);
+    if (!rungs.length) return;
+    const state = Store.get();
+    const haveEquipment = (state.settings.equipment || []);
+    // When she hasn't opted in yet, default-highlight the easiest rung she can
+    // actually DO with her equipment, not necessarily the literal first rung.
+    const defaultRung = rungs.find(r => (r.equipment || []).some(eq => haveEquipment.includes(eq))) || rungs[0];
+    const activeId = Progress.currentLadderRungId(state, ladderId, defaultRung.id);
+    $('ladderModalTitle').textContent = `${rungs[rungs.length - 1].name} — build-up steps`;
+    const list = $('ladderRungList');
+    list.innerHTML = '';
+    rungs.forEach(r => {
+      const isActive = r.id === activeId;
+      const eligible = (r.equipment || []).some(eq => haveEquipment.includes(eq));
+      const hint = r.timeBased ? `${r.duration}s hold` : (r.reps ? `${r.reps} reps` : '');
+      const row = document.createElement('div');
+      row.className = 'ladder-rung' + (isActive ? ' active' : '') + (eligible ? '' : ' disabled');
+      row.innerHTML = `
+        <div class="ladder-rung-thumb">${ladderThumbHtml(r)}</div>
+        <div class="ladder-rung-info">
+          <div class="ladder-rung-name">${escapeHtml(r.name)}</div>
+          <div class="ladder-rung-hint">${escapeHtml(eligible ? hint : `needs ${r.equipment.join('/')} — not in your equipment`)}</div>
+        </div>
+        ${isActive ? '<span class="ladder-rung-badge">Current</span>' : ''}
+      `;
+      if (eligible) row.onclick = () => selectLadderRung(ladderId, r.id, rungs);
+      else row.onclick = () => showToast(`You'll need ${r.equipment.join(' or ')} enabled in Settings to use this one.`);
+      list.appendChild(row);
+    });
+    $('ladderModal').style.display = 'flex';
+  }
+
+  // Note: this only changes the rung used the NEXT time this move is generated into
+  // a workout — it deliberately never touches the in-progress session (session.steps
+  // was already built from whatever rung was active when the workout started), so
+  // picking a new rung mid-set never disrupts a running timer or a half-typed rep
+  // entry on the step she's currently doing.
+  function selectLadderRung(ladderId, rungId, rungs) {
+    Store.set(s => Progress.setLadderRung(s, ladderId, rungId));
+    closeLadderModal();
+    const picked = (rungs || []).find(r => r.id === rungId);
+    showToast(picked ? `Starting with ${picked.name} next time this move comes up.` : 'Got it — applies next time this move comes up.');
+  }
+
+  function closeLadderModal() { $('ladderModal').style.display = 'none'; }
+
+  function openLadderModalForCurrentStep() {
+    if (!session) return;
+    const step = session.steps[session.idx];
+    if (!step || !step.exerciseId) return;
+    const exDef = Generator.byId(step.exerciseId);
+    if (!exDef || !exDef.ladder) return;
+    openLadderModal(exDef.ladder);
   }
 
   function closeExerciseDetail() { $('exerciseDetail').style.display = 'none'; }
@@ -738,6 +808,10 @@ const App = (() => {
       likeBtn.style.display = 'none';
     }
 
+    const ladderBtn = $('playerLadderBtn');
+    const stepExDef = step.phase === 'work' && step.exerciseId ? Generator.byId(step.exerciseId) : null;
+    ladderBtn.style.display = (stepExDef && stepExDef.ladder) ? '' : 'none';
+
     renderExerciseMedia(step);
     renderExerciseInstructions(step);
 
@@ -823,7 +897,12 @@ const App = (() => {
     }
     warn.style.display = 'none';
     const kgVal = step.trackWeight ? entryDisplayToKg(parseFloat(weightRaw)) : null;
-    Store.set(s => Progress.recordSetPerformance(s, step.exerciseId, kgVal, repsVal));
+    Store.set(s => {
+      s = Progress.recordSetPerformance(s, step.exerciseId, kgVal, repsVal);
+      const exDef = Generator.byId(step.exerciseId);
+      if (exDef && exDef.ladder) s = Progress.recordLadderAttempt(s, exDef, { reps: repsVal });
+      return s;
+    });
     advance();
   }
 
@@ -957,7 +1036,12 @@ const App = (() => {
     const step = session.steps[session.idx];
     if (step && step.phase === 'work' && step.timeBased) {
       const elapsed = step.isCapabilityTest ? session.remaining : (step.duration - Math.max(0, session.remaining));
-      Store.set(s => Progress.recordHoldPerformance(s, step.exerciseId, elapsed));
+      Store.set(s => {
+        s = Progress.recordHoldPerformance(s, step.exerciseId, elapsed);
+        const exDef = Generator.byId(step.exerciseId);
+        if (exDef && exDef.ladder) s = Progress.recordLadderAttempt(s, exDef, { holdSec: elapsed });
+        return s;
+      });
     }
     if (natural) playFinishSound();
     advance();
@@ -1702,6 +1786,7 @@ const App = (() => {
     markManualComplete, checkForUpdates,
     setTodayTime, clearTodayTime, renderSettingsVisibility, logWeighIn,
     openExerciseDetail, closeExerciseDetail, toggleCurrentLiked,
+    openLadderModal, closeLadderModal, selectLadderRung, openLadderModalForCurrentStep,
     updateQuranHint, quranPlay, quranTogglePlay, quranNext, quranPrev,
     fixNotifications,
     renderTutorialScreen, startTutorialChapter, startTutorialAll, replayTutorialFromStart,

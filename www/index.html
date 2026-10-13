@@ -177,6 +177,11 @@
         <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="App.skipExercise()">Skip this exercise</button>
       </div>
 
+      <!-- Shown only on moves that have a build-up progression (push-up, plank,
+           pull-up, etc.) — lets her pick an easier or harder step any time, in
+           either entry or timer mode, without disrupting the step she's on. -->
+      <button class="btn btn-ghost btn-sm" id="playerLadderBtn" style="display:none;margin-top:6px" onclick="App.openLadderModalForCurrentStep()">Easier alternatives</button>
+
       <div class="cue-card" id="playerCue">—</div>
       <button class="btn btn-ghost" onclick="App.exitPlayer()" style="border:none;color:var(--fg-faint)">End workout</button>
     </section>
@@ -491,6 +496,23 @@
         <div><div class="t-label" id="detailAltLabel">Use easier version</div><div class="t-sub">Applies from your next workout</div></div>
         <button class="switch" id="detailAltToggle"></button>
       </div>
+      <div class="toggle-row" id="detailLadderRow" style="display:none">
+        <div><div class="t-label">Build-up options</div><div class="t-sub">Easier (or harder) versions to work your way up</div></div>
+        <button class="btn btn-ghost btn-sm" id="detailLadderBtn">View</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== BUILD-UP LADDER PICKER ===================== -->
+  <div class="modal-overlay" id="ladderModal" style="display:none" onclick="if(event.target===this) App.closeLadderModal()">
+    <div class="modal-sheet">
+      <div class="modal-handle"></div>
+      <div class="modal-head">
+        <h2 id="ladderModalTitle">Easier alternatives</h2>
+        <button class="icon-btn" onclick="App.closeLadderModal()">✕</button>
+      </div>
+      <p class="sub" style="color:var(--fg-dim);font-size:13px;margin-top:-6px">Pick the version that's right for you today — it's ready next time this move comes up. Hit the top of a step's range and you'll be bumped up automatically; fall short and you can always drop back down here.</p>
+      <div id="ladderRungList" style="display:flex;flex-direction:column;gap:10px"></div>
     </div>
   </div>
 
