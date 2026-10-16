@@ -865,8 +865,7 @@ const App = (() => {
     // coming back) should be picked back up where she left off, not silently
     // discarded in favor of a brand-new session starting at step 0.
     if (session && !session.isTutorialDemo) {
-      showScreen('screen-player');
-      renderStep();
+      goToWorkoutTab();
       return;
     }
     const state = Store.get();
@@ -876,7 +875,20 @@ const App = (() => {
       Store.set(s => { s.pendingWorkout = workout; return s; });
     }
     session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now() };
-    showScreen('screen-player');
+    const workoutTab = $('workoutTabBtn');
+    if (workoutTab) workoutTab.style.display = '';
+    goToWorkoutTab();
+  }
+
+  // The Workout tab is a genuine tab, not a one-shot screen: tapping it (from
+  // the tabbar itself, or via the Home hero button once a session exists)
+  // just shows whatever's already running — same idea as switching back to
+  // any other backgrounded tab — rather than rebuilding anything.
+  function goToWorkoutTab() {
+    if (!session || session.isTutorialDemo) return;
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === 'workout'));
+    $('screen-player').classList.add('active');
     renderStep();
   }
 
@@ -948,20 +960,40 @@ const App = (() => {
     } else {
       const skipExBtn = $('playerSkipExerciseBtn');
       if (skipExBtn) skipExBtn.style.display = (step.phase === 'work' && step.exerciseId) ? '' : 'none';
-      session.remaining = step.isCapabilityTest ? 0 : step.duration;
-      session.countUp = !!step.isCapabilityTest;
-      session.total = session.countUp ? CAP_TEST_MAX_SEC : step.duration;
+
+      // renderStep() re-runs both when landing on a brand-new step AND when
+      // simply redrawing the player after switching tabs and back (nothing
+      // about the step changed). Only reset the clock in the first case —
+      // otherwise coming back from another tab wipes out whatever time had
+      // already ticked by, which looked like the timer "restarting."
+      const isFreshStep = session.lastTimedIdx !== session.idx;
+      session.lastTimedIdx = session.idx;
+      if (isFreshStep) {
+        session.remaining = step.isCapabilityTest ? 0 : step.duration;
+        session.countUp = !!step.isCapabilityTest;
+        session.total = session.countUp ? CAP_TEST_MAX_SEC : step.duration;
+        session.running = false;
+      }
       $('playerTimer').textContent = fmtTime(session.remaining);
       $('playerSub').textContent = subLabel(step);
       updateRing(session.countUp ? session.remaining / session.total : 1);
+      $('playerSkipBtn').style.display = '';
       if (step.phase === 'rest' || step.phase === 'transition') {
-        // Nothing to "get ready" for here — rest and changeovers just flow automatically.
-        $('playerSkipBtn').style.display = '';
+        // Nothing to "get ready" for here — rest and changeovers just flow automatically,
+        // whether this step just started or we're simply redrawing it after a tab switch.
         startTimer();
-      } else {
+      } else if (session.running) {
+        // She'd already tapped Start on this step before switching tabs — the interval
+        // kept ticking the whole time, so just reattach a fresh interval and carry on
+        // from the real remaining time rather than making her tap Start again.
+        startTimer();
+      } else if (isFreshStep) {
         $('playerActionBtn').textContent = 'Start';
-        $('playerSkipBtn').style.display = '';
-        session.running = false;
+      } else {
+        // Resuming a step she'd paused before switching tabs — reflect that
+        // instead of relabeling it back to "Start" as if nothing happened.
+        $('playerActionBtn').textContent = 'Resume';
+        $('playerSub').textContent = 'paused — tap resume';
       }
     }
   }
@@ -1199,6 +1231,8 @@ const App = (() => {
   function exitPlayer() {
     clearInterval(timerId); timerId = null;
     session = null;
+    const workoutTab = $('workoutTabBtn');
+    if (workoutTab) workoutTab.style.display = 'none';
     goto('home');
   }
 
@@ -1233,6 +1267,8 @@ const App = (() => {
       return s;
     });
     session = null;
+    const workoutTab = $('workoutTabBtn');
+    if (workoutTab) workoutTab.style.display = 'none';
     Notify.refreshSchedule(Store.get());
     goto('home');
   }
@@ -1897,7 +1933,7 @@ const App = (() => {
 
   return {
     init, onboardNext, finishOnboarding, toggleSwitch, goto,
-    startWorkout, reroll, playerAction, playerSkip, playerBack, exitPlayer, setMediaFrame, finishSet,
+    startWorkout, goToWorkoutTab, reroll, playerAction, playerSkip, playerBack, exitPlayer, setMediaFrame, finishSet,
     pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll, setUnits, setEntryUnits, skipExercise,
     markManualComplete, checkForUpdates,
     setTodayTime, clearTodayTime, renderSettingsVisibility, logWeighIn,
