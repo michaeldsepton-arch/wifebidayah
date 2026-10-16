@@ -510,6 +510,11 @@ const App = (() => {
     renderPlanPreview(state.pendingWorkout);
     renderTimePickCard(state);
     renderWeighInBanner(state, 'home');
+
+    // If she stepped away to another tab mid-workout, make it obvious she can
+    // just pick back up rather than thinking she has to start over.
+    const resuming = session && !session.isTutorialDemo;
+    $('startBtn').textContent = resuming ? 'Resume workout' : "Start today's workout";
   }
 
   function renderTimePickCard(state) {
@@ -856,6 +861,14 @@ const App = (() => {
   }
 
   function startWorkout() {
+    // A workout already in progress (she just switched to another tab and is
+    // coming back) should be picked back up where she left off, not silently
+    // discarded in favor of a brand-new session starting at step 0.
+    if (session && !session.isTutorialDemo) {
+      showScreen('screen-player');
+      renderStep();
+      return;
+    }
     const state = Store.get();
     let workout = state.pendingWorkout;
     if (!workoutIsValid(workout, state)) {
