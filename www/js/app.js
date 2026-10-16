@@ -184,12 +184,25 @@ const App = (() => {
 
   // Drives the circular progress ring around the countdown: `fraction` is how much
   // of the ring should still be lit (1 = full circle, 0 = empty).
-  function updateRing(fraction) {
+  // `skipTransition` is for redrawing a step that's already in progress (e.g.
+  // switching back from another tab): a hidden element's style still updates every
+  // tick under the hood, it just never gets painted, so the moment it's shown again
+  // the browser treats the jump from its last *painted* position as a fresh change
+  // and animates the ring sweeping from there — looking like it "restarted." Setting
+  // the dashoffset with no transition first removes that stale painted starting point.
+  function updateRing(fraction, skipTransition) {
     const el = $('playerRingFill');
     if (!el) return;
     const f = Math.max(0, Math.min(1, fraction));
     el.style.strokeDasharray = String(RING_CIRC);
-    el.style.strokeDashoffset = String(RING_CIRC * (1 - f));
+    if (skipTransition) {
+      el.style.transition = 'none';
+      el.style.strokeDashoffset = String(RING_CIRC * (1 - f));
+      el.getBoundingClientRect(); // force a reflow so "none" is committed before transition is restored
+      el.style.transition = '';
+    } else {
+      el.style.strokeDashoffset = String(RING_CIRC * (1 - f));
+    }
   }
 
   let session = null;   // active player session
@@ -976,7 +989,11 @@ const App = (() => {
       }
       $('playerTimer').textContent = fmtTime(session.remaining);
       $('playerSub').textContent = subLabel(step);
-      updateRing(session.countUp ? session.remaining / session.total : 1);
+      // Same ratio the per-second tick itself uses (startTimer, below) — on a fresh
+      // step remaining === total so this is still a full ring either way, but on
+      // resume it now reflects the real time left instead of forcing a full ring
+      // that the next tick would have to visibly correct a second later.
+      updateRing(session.remaining / session.total, !isFreshStep);
       $('playerSkipBtn').style.display = '';
       if (step.phase === 'rest' || step.phase === 'transition') {
         // Nothing to "get ready" for here — rest and changeovers just flow automatically,
