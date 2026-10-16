@@ -1014,7 +1014,11 @@ const App = (() => {
     let i = session.idx + 1;
     while (i < session.steps.length) {
       const s = session.steps[i];
-      if (s.phase === 'transition') break;
+      // Stop at the next genuinely different thing: another exercise, or a
+      // whole new section (cooldown) — not just any non-'work' step, since
+      // 'rest' steps belonging to this exercise (or the run-up to the next
+      // circuit round) should still be skipped through.
+      if (s.phase !== 'work' && s.phase !== 'rest') break;
       if (s.phase === 'work' && s.exerciseId !== exId) break;
       i++;
     }
