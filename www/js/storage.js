@@ -57,6 +57,11 @@ const Store = (() => {
     },
     // currently generated-but-not-yet-done workout, so Home + Player agree
     pendingWorkout: null,
+    // exerciseIds that were planned but never actually finished (skipped, or the
+    // workout ended before reaching them) — prioritized back into the next
+    // eligible workout instead of just quietly never happening. See
+    // Progress.updateCarryOver / Generator.pickExercise.
+    carryOverExerciseIds: [],
     // the time she picked today to work out: { date: 'YYYY-MM-DD', time: 'HH:MM' }
     plannedTime: null,
     // true once she's been through the first-run tutorial (fully or skipped) —

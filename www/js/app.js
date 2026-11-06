@@ -70,7 +70,7 @@ const App = (() => {
           { exerciseId:'bodyweight_squat', name:'Bodyweight Squat', pattern:'squat', sets:3, reps:'10-12', timeBased:false, restSec:20, workSec:40, images:[], video:'l83R5PblSMA' },
         ],
       };
-      session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now(), isTutorialDemo: true };
+      session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now(), isTutorialDemo: true, completedExerciseIds: new Set() };
     }
   }
   function tutorialDemoStep(idx) {
@@ -327,6 +327,12 @@ const App = (() => {
         ensurePendingWorkout();
         if ($('screen-home').classList.contains('active')) renderHome();
         Notify.refreshSchedule(Store.get());
+        // Screen-off (or just backgrounding the app) can suspend the running
+        // timer's setInterval entirely, not just delay it — catch up the moment
+        // we're back, instantly reflecting the real time that passed instead of
+        // waiting up to a second for the next tick (which the OS may also have
+        // dropped outright while the screen was off).
+        if (session && session.running) tickTimer();
       }
     });
   }
@@ -824,7 +830,7 @@ const App = (() => {
   function buildSteps(workout) {
     const steps = [];
 
-    function workStep(block, setIndex, totalSets) {
+    function workStep(block, setIndex, totalSets, side) {
       return {
         phase:'work', name:block.name, cue:block.cue, pattern:block.pattern,
         images: block.images || [], video: block.video || null, steps: block.steps || [],
@@ -834,7 +840,25 @@ const App = (() => {
         trackWeight: block.trackWeight, suggestedWeightKg: block.suggestedWeightKg,
         overloadNote: block.overloadNote,
         setIndex, totalSets, exerciseId: block.exerciseId,
+        side: side || null, // 'left' | 'right' | null — see isPerSide below
       };
+    }
+
+    // "10 per side", "8-10 per side" etc. mean one set is really two separate
+    // sets — left arm/leg, then right — not one combined set. Every per-side
+    // move in this app's data is self-paced entry mode (no running timer), so
+    // this is a pure step-count change: push two consecutive work steps instead
+    // of one, no rest between them (same as how left/right would naturally
+    // happen back-to-back) and no change to time-budget math.
+    function isPerSide(block) { return /per side/i.test(block.reps || ''); }
+
+    function pushWorkSteps(block, setIndex, totalSets) {
+      if (isPerSide(block)) {
+        steps.push(workStep(block, setIndex, totalSets, 'left'));
+        steps.push(workStep(block, setIndex, totalSets, 'right'));
+      } else {
+        steps.push(workStep(block, setIndex, totalSets));
+      }
     }
 
     // No "Get ready" interstitial between moves — it was an extra screen with
@@ -849,7 +873,7 @@ const App = (() => {
       const rounds = workout.blocks[0].sets;
       for (let r = 1; r <= rounds; r++) {
         workout.blocks.forEach((block, i) => {
-          steps.push(workStep(block, r, rounds));
+          pushWorkSteps(block, r, rounds);
           const lastInRound = i === workout.blocks.length - 1;
           if (lastInRound && r < rounds) {
             const upNext = workout.blocks[0];
@@ -860,7 +884,7 @@ const App = (() => {
     } else {
       workout.blocks.forEach((block) => {
         for (let s=1; s<=block.sets; s++) {
-          steps.push(workStep(block, s, block.sets));
+          pushWorkSteps(block, s, block.sets);
           if (s < block.sets) steps.push({ phase:'rest', name:'Rest', nextName: block.name, nextId: block.exerciseId, cue:'Catch your breath, shake it out.', images: block.images||[], video: block.video||null, pattern: block.pattern, timeBased:true, duration: block.restSec });
         }
       });
@@ -887,10 +911,31 @@ const App = (() => {
       workout = Generator.generate(state);
       Store.set(s => { s.pendingWorkout = workout; return s; });
     }
-    session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now() };
+    session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now(), completedExerciseIds: new Set() };
     const workoutTab = $('workoutTabBtn');
     if (workoutTab) workoutTab.style.display = '';
     goToWorkoutTab();
+  }
+
+  // The full list of exerciseIds that were actually planned for this workout —
+  // used to compare against what she actually finished, so the carry-over list
+  // only queues up what's genuinely missing, not everything on the plan.
+  function plannedExerciseIds(workout) {
+    return workout.blocks.map(b => b.exerciseId);
+  }
+
+  // Marks an exercise as genuinely, fully done — every set (and, for a per-side
+  // move, both sides) actually completed via "Finished Set" or a timer running
+  // its full course — not merely reached. Called right before advance() so a
+  // skip (skipExercise, or the plain early Skip button on a timed step) never
+  // marks anything done: skipExercise jumps straight past without ever calling
+  // this, and finishTimedStep(false) (the Skip button) is excluded by the
+  // `natural` check at its call site below.
+  function markWorkDone(step) {
+    if (!session || !step || step.phase !== 'work' || !step.exerciseId) return;
+    if (step.setIndex !== step.totalSets) return; // more sets/rounds still to go
+    if (step.side === 'left') return; // right side still to come
+    session.completedExerciseIds.add(step.exerciseId);
   }
 
   // The Workout tab is a genuine tab, not a one-shot screen: tapping it (from
@@ -912,18 +957,20 @@ const App = (() => {
 
     $('playerProgress').style.width = Math.round((session.idx / session.steps.length) * 100) + '%';
     $('playerPhase').textContent = PHASE_LABEL[step.phase] || step.phase.toUpperCase();
-    $('playerName').textContent = step.name;
+    const sideSuffix = step.side ? ` — ${step.side === 'left' ? 'Left' : 'Right'} Side` : '';
+    $('playerName').textContent = step.name + sideSuffix;
     $('playerBackBtn').style.visibility = session.idx > 0 ? 'visible' : 'hidden';
 
     const setIndicator = $('playerSetIndicator');
-    if (step.phase === 'work' && step.totalSets > 1) {
+    if (step.phase === 'work' && (step.totalSets > 1 || step.side)) {
       const isCircuit = session.workout.type === 'circuit';
       const noun = isCircuit ? 'Round' : 'Set';
       // Rounds are easy to misread as "nothing happened" the first time, since the
       // player visibly moves to a *different* exercise between rounds of the same
       // one — spell it out just once, on the first round.
       const hint = (isCircuit && step.setIndex === 1) ? ` — you'll repeat this each round` : '';
-      setIndicator.textContent = `${noun} ${step.setIndex} of ${step.totalSets}${hint}`;
+      const sideHint = step.side ? ` (${step.side === 'left' ? 'Left' : 'Right'})` : '';
+      setIndicator.textContent = `${noun} ${step.setIndex} of ${step.totalSets}${sideHint}${hint}`;
       setIndicator.style.display = '';
     } else {
       setIndicator.style.display = 'none';
@@ -1062,6 +1109,7 @@ const App = (() => {
       if (exDef && exDef.ladder) s = Progress.recordLadderAttempt(s, exDef, { reps: repsVal });
       return s;
     });
+    markWorkDone(step);
     advance();
   }
 
@@ -1155,27 +1203,40 @@ const App = (() => {
     el.innerHTML = html || '<p>Move at your own pace, focus on good form.</p>';
   }
 
+  // The actual countdown/count-up math lives here, keyed off a wall-clock
+  // anchor rather than "subtract 1 every tick" — because the OS throttles or
+  // outright suspends setInterval once the screen turns off (a genuine Android
+  // WebView background-timer limitation). Each call recomputes `remaining`
+  // from real elapsed time since the anchor, so whether this runs on-schedule
+  // every second or only once the screen wakes back up, the result is correct
+  // either way — it catches up in one jump instead of silently falling behind.
+  function tickTimer() {
+    if (!session || !session.running) return;
+    const elapsedSec = Math.round((Date.now() - session.tickAnchorMs) / 1000);
+    if (session.countUp) {
+      session.remaining = session.tickAnchorRemaining + elapsedSec;
+      $('playerTimer').textContent = fmtTime(session.remaining);
+      updateRing(session.remaining / session.total);
+      if (session.remaining >= CAP_TEST_MAX_SEC) finishTimedStep(true);
+    } else {
+      session.remaining = session.tickAnchorRemaining - elapsedSec;
+      $('playerTimer').textContent = fmtTime(Math.max(0, session.remaining));
+      updateRing(Math.max(0, session.remaining) / session.total);
+      if (session.remaining <= 0) finishTimedStep(true);
+    }
+  }
+
   function startTimer() {
     session.running = true;
+    session.tickAnchorMs = Date.now();
+    session.tickAnchorRemaining = session.remaining;
     $('playerActionBtn').textContent = session.countUp ? "I'm done" : 'Pause';
     $('playerSub').textContent = session.countUp
       ? 'Go as long as you can, then tap "I\'m done".'
       : (session.steps[session.idx].phase === 'rest' ? 'resting — catch your breath'
          : session.steps[session.idx].phase === 'transition' ? subLabel(session.steps[session.idx])
          : 'in progress…');
-    timerId = setInterval(() => {
-      if (session.countUp) {
-        session.remaining += 1;
-        $('playerTimer').textContent = fmtTime(session.remaining);
-        updateRing(session.remaining / session.total);
-        if (session.remaining >= CAP_TEST_MAX_SEC) finishTimedStep(true);
-      } else {
-        session.remaining -= 1;
-        $('playerTimer').textContent = fmtTime(session.remaining);
-        updateRing(session.remaining / session.total);
-        if (session.remaining <= 0) finishTimedStep(true);
-      }
-    }, 1000);
+    timerId = setInterval(tickTimer, 1000);
   }
 
   function pauseTimer() {
@@ -1208,7 +1269,10 @@ const App = (() => {
         return s;
       });
     }
-    if (natural) playFinishSound();
+    if (natural) {
+      playFinishSound();
+      markWorkDone(step);
+    }
     advance();
   }
 
@@ -1247,6 +1311,15 @@ const App = (() => {
 
   function exitPlayer() {
     clearInterval(timerId); timerId = null;
+    // Quitting mid-workout (not even reaching the feedback screen) is exactly
+    // the case the carry-over system exists for — whatever wasn't genuinely
+    // finished gets queued up for next time, same as a completed-but-partial
+    // session does via submitFeedback below.
+    if (session && !session.isTutorialDemo) {
+      const planned = plannedExerciseIds(session.workout);
+      const completed = session.completedExerciseIds;
+      Store.set(s => Progress.updateCarryOver(s, planned, completed));
+    }
     session = null;
     const workoutTab = $('workoutTabBtn');
     if (workoutTab) workoutTab.style.display = 'none';
@@ -1277,8 +1350,11 @@ const App = (() => {
 
   function submitFeedback() {
     const weightVal = parseFloat($('feedbackWeight').value);
+    const planned = plannedExerciseIds(session.workout);
+    const completed = session.completedExerciseIds;
     Store.set(s => {
-      Progress.recordCompletion(s, session.workout, session.feedback || 'good');
+      Progress.recordCompletion(s, session.workout, session.feedback || 'good', completed);
+      Progress.updateCarryOver(s, planned, completed);
       if (!isNaN(weightVal) && weightVal > 0) Progress.logWeight(s, entryDisplayToKg(weightVal));
       s.pendingWorkout = Generator.generate(s);
       return s;

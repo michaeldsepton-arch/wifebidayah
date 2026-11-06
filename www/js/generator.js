@@ -82,6 +82,17 @@ const Generator = (() => {
     if (pool.length === 0) pool = EXERCISES.filter(e => patterns.includes(e.pattern) && isTopLadderRung(e)); // last resort, ignore equipment/exclude
     if (pool.length === 0) return null;
 
+    // Anything left over from a workout she didn't get all the way through (see
+    // storage.js's carryOverExerciseIds / Progress.updateCarryOver) gets dibs on
+    // this slot if it's actually eligible for this pattern right now — so a move
+    // she ran out of time for still shows back up soon instead of just sliding
+    // out of rotation on the normal recency math.
+    const carryOver = state.carryOverExerciseIds || [];
+    if (carryOver.length) {
+      const carried = pool.filter(e => carryOver.includes(e.id));
+      if (carried.length) pool = carried;
+    }
+
     const targetTier = state.progress.difficultyTier;
     const prefs = state.exercisePrefs || {};
     let best = null, bestScore = -Infinity;
@@ -157,6 +168,37 @@ const Generator = (() => {
     return picks.slice(0, 3);
   }
 
+  // Picks warmups that actually relate to the patterns the workout trains, instead
+  // of two random picks — e.g. bodyweight squats/leg swings ahead of a squat/lunge
+  // slot, arm circles ahead of a push/pull slot. Mirrors pickTargetedCooldown's
+  // approach (matched-first, then generic filler) using WARMUPS' own `targets`.
+  function pickTargetedWarmup(blocks, n) {
+    const trained = [...new Set((blocks || []).map(b => b.pattern))];
+    const used = new Set();
+    const picks = [];
+
+    const matched = WARMUPS.filter(w => w.targets && w.targets.some(t => trained.includes(t)));
+    while (picks.length < n && matched.length) {
+      const i = Math.floor(Math.random() * matched.length);
+      const chosen = matched.splice(i, 1)[0];
+      if (used.has(chosen.id)) continue;
+      used.add(chosen.id);
+      picks.push(chosen);
+    }
+
+    if (picks.length < n) {
+      const generic = WARMUPS.filter(w => !used.has(w.id) && (!w.targets || w.targets.length === 0));
+      pickFew(generic, n - picks.length).forEach(w => { used.add(w.id); picks.push(w); });
+    }
+
+    if (picks.length < n) {
+      const rest = WARMUPS.filter(w => !used.has(w.id));
+      pickFew(rest, n - picks.length).forEach(w => picks.push(w));
+    }
+
+    return picks.slice(0, n);
+  }
+
   // How many reps a reps string like "10-12", "10 per side" or "20 total" represents,
   // so a rep-based set can be given a believable, real running countdown.
   function parseRepsCount(repsStr) {
@@ -201,7 +243,8 @@ const Generator = (() => {
       const sug = Progress.suggestNext(state, ex.id);
       suggestedWeightKg = sug.suggestedKg;
       overloadNote = sug.note;
-      repTarget = `${Progress.REP_TARGET_LO}-${Progress.REP_TARGET_HI}`;
+      const range = Progress.repRangeFor(ex.id);
+      repTarget = `${range.lo}-${range.hi}`;
     } else if (ex.ladder) {
       // Bodyweight build-up ladder step (push-up, plank, pull-up, etc.) — no weight
       // involved, but still worth a "last time / aim for" note so progress toward
@@ -356,22 +399,22 @@ const Generator = (() => {
     const band = tierBand(state.progress.difficultyTier);
     const targetTotalSec = (state.settings.sessionMinutes || 30) * 60;
 
-    const warmup = pickFew(WARMUPS, 2);
-    // Cool-down stretches depend on which patterns actually end up in the workout
-    // (so they can be tailored to what she trained), which isn't known until the
-    // workout itself is built below — use a rough average cooldown length here
-    // just to size the main-set time budget, then pick the real, targeted
-    // stretches afterward once the blocks exist.
+    // Both warmup and cool-down are best picked to match the patterns actually
+    // trained today, which isn't known until the workout itself is built below —
+    // use rough average lengths here just to size the main-set time budget, then
+    // pick the real, targeted warmup + stretches afterward once the blocks exist.
+    const roughWarmupSec = 50; // ~2 warmups at ~25s each, same ballpark as before
     const roughCooldownSec = 50; // ~2 stretches at ~25s each, same ballpark as before
-    const overheadSec = warmup.reduce((a, w) => a + w.duration, 0)
+    const overheadSec = roughWarmupSec
       + roughCooldownSec
-      + (warmup.length + 2) * TRANSITION_SEC;
+      + 4 * TRANSITION_SEC;
     const mainBudget = Math.max(600, targetTotalSec - overheadSec);
 
     const workout = type === 'strength'
       ? buildStrengthWorkout(state, band, mainBudget)
       : buildCircuitWorkout(state, band, mainBudget);
 
+    const warmup = pickTargetedWarmup(workout.blocks, 2);
     const cooldown = pickTargetedCooldown(workout.blocks);
 
     const estMinutes = estimateMinutes(workout, warmup, cooldown);

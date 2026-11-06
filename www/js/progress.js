@@ -98,14 +98,23 @@ const Progress = (() => {
   }
 
   // Called after a completed session: updates streak + totals + recency + difficulty.
-  function recordCompletion(state, workout, feedback) {
+  // `completedIds` (a Set or array of exerciseIds she actually finished every set
+  // of — see app.js's markWorkDone) scopes the recency stamp to real completions
+  // only. An exercise that was in the plan but skipped or never reached shouldn't
+  // be marked "just done" — that was quietly making skipped moves LESS likely to
+  // come back soon (blocked by the normal rotation gap) instead of more, which is
+  // the opposite of what should happen. Falls back to "everything in the plan" if
+  // no set is given, so any older caller keeps working unchanged.
+  function recordCompletion(state, workout, feedback, completedIds) {
     const today = new Date().toISOString();
     state.history.push({
       date: today, type: workout.type, workoutId: workout.id,
       exerciseIds: workout.blocks.map(b => b.exerciseId),
       feedback, minutes: workout.estMinutes,
     });
-    workout.blocks.forEach(b => { state.exerciseRecency[b.exerciseId] = today; });
+    const doneSet = completedIds instanceof Set ? completedIds
+      : new Set(completedIds || workout.blocks.map(b => b.exerciseId));
+    workout.blocks.forEach(b => { if (doneSet.has(b.exerciseId)) state.exerciseRecency[b.exerciseId] = today; });
 
     state.progress.totalSessions += 1;
 
@@ -244,6 +253,19 @@ const Progress = (() => {
     return m[2] ? +m[2] : +m[1];
   }
 
+  // Every exercise carries its own natural rep range in its `reps` string (e.g.
+  // '15-20', '12-15 per side'), set per-move in exercises.js because some moves
+  // (core work, lateral raises, high-rep bodyweight moves) genuinely call for
+  // more reps than a flat 6-10 — that global used to override all of them.
+  // Falls back to the old 6-10 band only for exercises with no parseable reps
+  // string (true weighted compound lifts where 6-10 is actually the right default).
+  function repRangeFor(exerciseId) {
+    const ex = (typeof EXERCISES !== 'undefined' ? EXERCISES : []).find(e => e.id === exerciseId);
+    const m = ex && ex.reps ? String(ex.reps).match(/(\d+)\s*-\s*(\d+)/) : null;
+    if (m) return { lo: +m[1], hi: +m[2] };
+    return { lo: REP_TARGET_LO, hi: REP_TARGET_HI };
+  }
+
   // Note shown on a bodyweight (non-weighted) ladder step's entry screen. Keyed off
   // the exact rung's own performance history — which means the very first time she's
   // on a given rung (whether she just advanced into it, picked it herself, or it's
@@ -288,17 +310,18 @@ const Progress = (() => {
   // above it, add weight. Persists per-exercise so the NEXT time this move comes up
   // — whenever that is — it resumes exactly where she left off.
   function suggestNext(state, exerciseId) {
+    const { lo, hi } = repRangeFor(exerciseId);
     const perf = state.exercisePerf[exerciseId];
     if (!perf || perf.lastWeightKg == null) {
-      return { suggestedKg: null, note: `First time — pick a weight you can do for ${REP_TARGET_LO}-${REP_TARGET_HI} reps with good form, then log it.` };
+      return { suggestedKg: null, note: `First time — pick a weight you can do for ${lo}-${hi} reps with good form, then log it.` };
     }
     let note;
-    if (perf.lastReps < REP_TARGET_LO) {
-      note = `Last time: ${perf.lastReps} reps at ${perf.lastWeightKg}kg — try a little lighter today so you can land in the ${REP_TARGET_LO}-${REP_TARGET_HI} range.`;
-    } else if (perf.lastReps > REP_TARGET_HI) {
+    if (perf.lastReps < lo) {
+      note = `Last time: ${perf.lastReps} reps at ${perf.lastWeightKg}kg — try a little lighter today so you can land in the ${lo}-${hi} range.`;
+    } else if (perf.lastReps > hi) {
       note = `You hit ${perf.lastReps} reps at ${perf.lastWeightKg}kg last time — try a little heavier today.`;
     } else {
-      note = `Last time: ${perf.lastReps} reps at ${perf.lastWeightKg}kg — aim for ${REP_TARGET_LO}-${REP_TARGET_HI} again.`;
+      note = `Last time: ${perf.lastReps} reps at ${perf.lastWeightKg}kg — aim for ${lo}-${hi} again.`;
     }
     return { suggestedKg: perf.lastWeightKg, note };
   }
@@ -338,11 +361,29 @@ const Progress = (() => {
     return state;
   }
 
+  // Called alongside recordCompletion (same session end) with the full set of
+  // exerciseIds that were PLANNED for this workout and the subset actually
+  // completed. Anything planned-but-not-done gets queued into
+  // state.carryOverExerciseIds so Generator.pickExercise() can give it priority
+  // next time that pattern comes up — so a move she ran out of time for still
+  // shows back up soon instead of quietly falling out of rotation. Already-
+  // queued ids that got done this time are cleared; newly-missed ones are
+  // added, with no duplicates.
+  function updateCarryOver(state, plannedIds, completedIds) {
+    const done = completedIds instanceof Set ? completedIds : new Set(completedIds || []);
+    const stillPending = (state.carryOverExerciseIds || []).filter(id => !done.has(id));
+    const missed = (plannedIds || []).filter(id => !done.has(id));
+    const merged = new Set([...stillPending, ...missed]);
+    state.carryOverExerciseIds = Array.from(merged);
+    return state;
+  }
+
   return {
     startOfWeek, sessionsThisWeek, weekProgress, effectiveWeeklyTarget, morningMessage,
     recordCompletion, logWeight, weightTrend, isoWeekKey, weighInStatus, consistencyStats,
     expectedProgress, toggleLiked, setUseAlt, suggestNext, recordSetPerformance,
-    suggestHoldTarget, recordHoldPerformance, REP_TARGET_LO, REP_TARGET_HI,
+    suggestHoldTarget, recordHoldPerformance, REP_TARGET_LO, REP_TARGET_HI, repRangeFor,
     currentLadderRungId, setLadderRung, suggestBodyweightReps, recordLadderAttempt,
+    updateCarryOver,
   };
 })();
