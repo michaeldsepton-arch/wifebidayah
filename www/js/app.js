@@ -70,7 +70,7 @@ const App = (() => {
           { exerciseId:'bodyweight_squat', name:'Bodyweight Squat', pattern:'squat', sets:3, reps:'10-12', timeBased:false, restSec:20, workSec:40, images:[], video:'l83R5PblSMA' },
         ],
       };
-      session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now(), isTutorialDemo: true, completedExerciseIds: new Set() };
+      session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now(), isTutorialDemo: true, completedExerciseIds: new Set(), stepEntries: {} };
     }
   }
   function tutorialDemoStep(idx) {
@@ -933,7 +933,7 @@ const App = (() => {
       workout = Generator.generate(state);
       Store.set(s => { s.pendingWorkout = workout; return s; });
     }
-    session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now(), completedExerciseIds: new Set() };
+    session = { workout, steps: buildSteps(workout), idx: 0, feedback: null, startedAt: Date.now(), completedExerciseIds: new Set(), stepEntries: {} };
     const workoutTab = $('workoutTabBtn');
     if (workoutTab) workoutTab.style.display = '';
     goToWorkoutTab();
@@ -1113,9 +1113,27 @@ const App = (() => {
     if (lbl) lbl.textContent = `Weight (${entryUnitLabel()})`;
     const toggle = $('entryUnitsToggle');
     if (toggle) Array.from(toggle.children).forEach(c => c.classList.toggle('on', c.dataset.id === entryUnits()));
-    $('entryWeightInput').value = (step.suggestedWeightKg != null) ? fmtEntryWeight(step.suggestedWeightKg) : '';
-    $('entryRepsInput').value = '';
-    $('entryRepsInput').placeholder = step.repTarget ? `${step.repTarget} reps` : (step.reps || 'reps');
+
+    const weightInput = $('entryWeightInput');
+    const repsInput = $('entryRepsInput');
+    const finishBtn = $('entryFinishBtn');
+    const editBtn = $('entryEditBtn');
+    const saved = session.stepEntries[session.idx];
+    const isLocked = !!saved && session.editingStepIdx !== session.idx;
+
+    if (saved) {
+      repsInput.value = saved.reps;
+      weightInput.value = (saved.weightKg != null) ? fmtEntryWeight(saved.weightKg) : '';
+    } else {
+      weightInput.value = (step.suggestedWeightKg != null) ? fmtEntryWeight(step.suggestedWeightKg) : '';
+      repsInput.value = '';
+    }
+    repsInput.disabled = isLocked;
+    weightInput.disabled = isLocked;
+    if (finishBtn) finishBtn.style.display = isLocked ? 'none' : '';
+    if (editBtn) editBtn.style.display = isLocked ? '' : 'none';
+
+    repsInput.placeholder = step.repTarget ? `${step.repTarget} reps` : (step.reps || 'reps');
     $('entryWarning').style.display = 'none';
   }
 
@@ -1138,14 +1156,25 @@ const App = (() => {
     }
     warn.style.display = 'none';
     const kgVal = step.trackWeight ? entryDisplayToKg(parseFloat(weightRaw)) : null;
+    const wasAlreadyFinished = !!session.stepEntries[session.idx];
     Store.set(s => {
-      s = Progress.recordSetPerformance(s, step.exerciseId, kgVal, repsVal);
+      s = Progress.recordSetPerformance(s, step.exerciseId, kgVal, repsVal, session.startedAt);
       const exDef = Generator.byId(step.exerciseId);
       if (exDef && exDef.ladder) s = Progress.recordLadderAttempt(s, exDef, { reps: repsVal });
       return s;
     });
+    session.stepEntries[session.idx] = { reps: repsVal, weightKg: kgVal };
+    session.editingStepIdx = null;
     markWorkDone(step);
-    advance();
+    if (wasAlreadyFinished) renderStep(); else advance();
+  }
+
+  // Unlocks an already-finished entry-mode step for correction (the "Edit"
+  // button shown when she's navigated back to a set she already logged).
+  function editEntryStep() {
+    if (!session) return;
+    session.editingStepIdx = session.idx;
+    renderStep();
   }
 
   // Jumps past every remaining set/rest of the exercise she's currently on, landing
@@ -1154,6 +1183,7 @@ const App = (() => {
   function skipExercise() {
     if (!session) return;
     clearInterval(timerId); timerId = null;
+    session.editingStepIdx = null;
     const step = session.steps[session.idx];
     const exId = step.exerciseId;
     let i = session.idx + 1;
@@ -1315,6 +1345,7 @@ const App = (() => {
 
   function advance() {
     clearInterval(timerId); timerId = null;
+    session.editingStepIdx = null;
     session.idx += 1;
     renderStep();
   }
@@ -1330,6 +1361,7 @@ const App = (() => {
   function playerBack() {
     if (!session || session.idx <= 0) return;
     clearInterval(timerId); timerId = null;
+    session.editingStepIdx = null;
     let i = session.idx - 1;
     while (
       i > 0 &&
@@ -2061,7 +2093,7 @@ const App = (() => {
 
   return {
     init, onboardNext, finishOnboarding, toggleSwitch, goto,
-    startWorkout, goToWorkoutTab, reroll, playerAction, playerSkip, playerBack, exitPlayer, setMediaFrame, finishSet,
+    startWorkout, goToWorkoutTab, reroll, playerAction, playerSkip, playerBack, exitPlayer, setMediaFrame, finishSet, editEntryStep,
     pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll, setUnits, setEntryUnits, skipExercise,
     markManualComplete, checkForUpdates,
     setTodayTime, clearTodayTime, renderSettingsVisibility, logWeighIn,

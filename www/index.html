@@ -173,8 +173,9 @@
           </label>
         </div>
         <p class="entry-warning" id="entryWarning" style="display:none;color:var(--bad, #c97b6a);font-size:13px;margin:4px 0 8px"></p>
-        <button class="btn btn-primary" onclick="App.finishSet()">Finished Set</button>
-        <button class="btn btn-ghost btn-sm" style="margin-top:8px" onclick="App.skipExercise()">Skip this exercise</button>
+        <button class="btn btn-primary" id="entryFinishBtn" onclick="App.finishSet()">Finished Set</button>
+        <button class="btn btn-primary" id="entryEditBtn" style="display:none" onclick="App.editEntryStep()">Edit</button>
+        <button class="btn btn-ghost btn-sm" id="entrySkipExerciseBtn" style="margin-top:8px" onclick="App.skipExercise()">Skip this exercise</button>
       </div>
 
       <!-- Shown only on moves that have a build-up progression (push-up, plank,

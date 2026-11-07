@@ -346,10 +346,31 @@ const Progress = (() => {
 
   // Called the moment she taps "Finished Set" — updates immediately so the very next
   // set (same session or not) sees the fresh number via suggestNext().
-  function recordSetPerformance(state, exerciseId, kg, reps) {
+  // sessionKey identifies the current workout (pass session.startedAt from app.js).
+  // Within one session, a later set should never overwrite lastWeightKg/lastReps
+  // with a WORSE result — a fatigued final set (lighter, or fewer reps at the same
+  // weight) shouldn't drag down what "Last time" reports next session. So the first
+  // set of this exercise in a given session seeds the baseline, and every later set
+  // in that same session only replaces it if it's actually better (heavier, or same
+  // weight with more reps). A new session always starts a fresh comparison.
+  function recordSetPerformance(state, exerciseId, kg, reps, sessionKey) {
     const perf = state.exercisePerf[exerciseId] || { timesPerformed: 0 };
-    perf.lastWeightKg = (kg === null || kg === undefined || isNaN(kg)) ? (perf.lastWeightKg ?? null) : kg;
-    perf.lastReps = (reps === null || reps === undefined || isNaN(reps)) ? (perf.lastReps ?? null) : reps;
+    const kgClean = (kg === null || kg === undefined || isNaN(kg)) ? null : kg;
+    const repsClean = (reps === null || reps === undefined || isNaN(reps)) ? null : reps;
+    const isNewSession = sessionKey == null || perf._lastSessionKey !== sessionKey;
+    if (isNewSession || perf.lastWeightKg == null || perf.lastReps == null) {
+      if (kgClean != null) perf.lastWeightKg = kgClean;
+      if (repsClean != null) perf.lastReps = repsClean;
+    } else {
+      const prevKg = perf.lastWeightKg ?? 0;
+      const thisKg = kgClean ?? 0;
+      const isBetter = thisKg > prevKg || (thisKg === prevKg && repsClean != null && repsClean > perf.lastReps);
+      if (isBetter) {
+        if (kgClean != null) perf.lastWeightKg = kgClean;
+        if (repsClean != null) perf.lastReps = repsClean;
+      }
+    }
+    if (sessionKey != null) perf._lastSessionKey = sessionKey;
     perf.timesPerformed = (perf.timesPerformed || 0) + 1;
     state.exercisePerf[exerciseId] = perf;
     return state;
