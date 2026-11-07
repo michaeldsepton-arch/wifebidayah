@@ -332,7 +332,14 @@ const App = (() => {
         // we're back, instantly reflecting the real time that passed instead of
         // waiting up to a second for the next tick (which the OS may also have
         // dropped outright while the screen was off).
-        if (session && session.running) tickTimer();
+        // Belt-and-suspenders on top of the isFreshEntryStep reset in
+        // renderStep(): only ever catch up a step that's actually timed.
+        // `session.running` alone isn't a safe enough signal — it's a single
+        // session-wide flag, not scoped per-step — so an entry-mode (self-
+        // paced, no timer) step never gets treated as if its clock ran out.
+        const curStep = session && session.steps[session.idx];
+        const isTimedStep = curStep && (curStep.phase === 'rest' || curStep.phase === 'transition' || (curStep.phase === 'work' && curStep.timeBased));
+        if (session && session.running && isTimedStep) tickTimer();
       }
     });
   }
@@ -1031,6 +1038,19 @@ const App = (() => {
     });
 
     if (isEntryMode) {
+      // An entry-mode step has no timer of its own, but `session.running` is a
+      // single session-wide flag last set by whichever TIMED step ran before
+      // this one (a rest period, say) and was never cleared on the way in —
+      // harmless on its own, since nothing used to read it outside that
+      // timer's own tick loop. But the screen-off catch-up below (tickTimer on
+      // visibilitychange) does read it, and a stale `true` left over from an
+      // already-finished rest period made it look like THIS step's timer had
+      // also run out the instant the screen came back on — silently
+      // finishing/advancing past the set before she'd entered anything. Clear
+      // it the same way the timed branch already does for its own fresh steps.
+      const isFreshEntryStep = session.lastTimedIdx !== session.idx;
+      session.lastTimedIdx = session.idx;
+      if (isFreshEntryStep) session.running = false;
       renderEntryForm(step);
     } else {
       const skipExBtn = $('playerSkipExerciseBtn');
