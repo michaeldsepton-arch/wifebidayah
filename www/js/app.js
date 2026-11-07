@@ -491,6 +491,21 @@ const App = (() => {
   }
 
   function reroll() {
+    // Shuffle is reachable from Home even while a workout session is still
+    // alive in the background (she never hit "End workout," just switched
+    // tabs or left the app) — discarding that silently would throw away the
+    // carry-over record of whatever she had or hadn't finished in it. Treat
+    // it the same as exitPlayer(): bank what's genuinely done, queue what
+    // isn't, then clear the session before generating the new plan.
+    if (session && !session.isTutorialDemo) {
+      clearInterval(timerId); timerId = null;
+      const planned = plannedExerciseIds(session.workout);
+      const completed = session.completedExerciseIds;
+      Store.set(s => Progress.updateCarryOver(s, planned, completed));
+      session = null;
+      const workoutTab = $('workoutTabBtn');
+      if (workoutTab) workoutTab.style.display = 'none';
+    }
     Store.set(s => { s.pendingWorkout = Generator.generate(s); return s; });
     renderHome();
   }
