@@ -275,11 +275,19 @@ const Generator = (() => {
       workSec,
       sets,
       restSec,
+      // "Both sides" moves like Side Plank — unlike a per-side REPS exercise
+      // (whose estimateWorkSeconds already bakes the ×2 into workSec, since
+      // it's self-paced with no on-screen timer of its own), workSec here IS
+      // the actual per-side hold duration the timer counts down from, so it
+      // has to stay un-doubled — the ×2 for the time budget happens separately,
+      // in blockSeconds below.
+      perSide: !!ex.perSide,
     };
   }
 
   function blockSeconds(b) {
-    return b.sets * b.workSec + (b.sets - 1) * b.restSec;
+    const sideMultiplier = (b.timeBased && b.perSide) ? 2 : 1;
+    return b.sets * b.workSec * sideMultiplier + (b.sets - 1) * b.restSec;
   }
 
   // Grows sets round-robin (always topping up whichever block has the fewest so far)

@@ -882,7 +882,12 @@ const App = (() => {
     // this is a pure step-count change: push two consecutive work steps instead
     // of one, no rest between them (same as how left/right would naturally
     // happen back-to-back) and no change to time-budget math.
-    function isPerSide(block) { return /per side/i.test(block.reps || ''); }
+    // A per-side HOLD (Side Plank, Knee Side Plank) is flagged explicitly via
+    // block.perSide instead of the reps-string pattern match, since a timed
+    // hold has no reps string — its "set" was being counted as one single
+    // timed hold covering both sides at once, when it should be a genuine
+    // left hold AND a genuine right hold per set.
+    function isPerSide(block) { return /per side/i.test(block.reps || '') || !!block.perSide; }
 
     function pushWorkSteps(block, setIndex, totalSets) {
       if (isPerSide(block)) {
