@@ -1261,6 +1261,26 @@ const App = (() => {
     renderStep();
   }
 
+  // Skips just the ONE set she's currently on (an entry-mode/reps step has no
+  // equivalent of the timed branch's single-step "Skip" button) — not every
+  // remaining set of the exercise, so choosing to do 2 sets instead of 3 (by
+  // skipping the 3rd) still keeps sets 1 and 2's recordings exactly as logged.
+  // markWorkDone only actually marks the exercise done when this genuinely was
+  // the last set/side, so skipping an earlier one just moves on to the next
+  // set as normal, with nothing recorded for the one she skipped.
+  function skipSet() {
+    if (!session) return;
+    clearInterval(timerId); timerId = null;
+    session.editingStepIdx = null;
+    const step = session.steps[session.idx];
+    markWorkDone(step);
+    let i = session.idx + 1;
+    // A skipped set shouldn't be followed by a rest meant for it.
+    if (session.steps[i] && session.steps[i].phase === 'rest') i++;
+    session.idx = i;
+    renderStep();
+  }
+
   // Rest and transition steps have no video/entry form of their own — they're just
   // time passing. Rather than leave the media box blank (which read as a dead,
   // broken screen), show a dimmed preview of whatever's coming up next with a
@@ -1394,10 +1414,14 @@ const App = (() => {
         return s;
       });
     }
-    if (natural) {
-      playFinishSound();
-      markWorkDone(step);
-    }
+    if (natural) playFinishSound();
+    // Mark the exercise done even on a skip, not just a natural finish —
+    // markWorkDone only actually does anything when this genuinely was the
+    // last set (and last side, for a per-side move), so skipping an EARLIER
+    // set/rest here is still a no-op. This is what lets deliberately skipping
+    // the final set of a timed hold (e.g. stopping at 2 sets instead of 3)
+    // count as done instead of getting queued back up by carry-over.
+    markWorkDone(step);
     advance();
   }
 
@@ -2156,7 +2180,7 @@ const App = (() => {
   return {
     init, onboardNext, finishOnboarding, toggleSwitch, goto,
     startWorkout, goToWorkoutTab, reroll, playerAction, playerSkip, playerBack, exitPlayer, setMediaFrame, finishSet, editEntryStep,
-    pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll, setUnits, setEntryUnits, skipExercise,
+    pickFeedback, submitFeedback, quickLogWeight, saveSettings, resetAll, setUnits, setEntryUnits, skipExercise, skipSet,
     markManualComplete, checkForUpdates,
     setTodayTime, clearTodayTime, renderSettingsVisibility, logWeighIn,
     openExerciseDetail, closeExerciseDetail, toggleCurrentLiked,
