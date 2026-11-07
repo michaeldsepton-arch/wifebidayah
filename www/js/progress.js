@@ -305,6 +305,23 @@ const Progress = (() => {
     return state;
   }
 
+  const KG_PER_LB = 0.45359237;
+
+  // Weight is always stored in kg internally, but this note is read by a
+  // human, in whichever unit she actually enters weights in (app.js's
+  // entryUnits setting) — and a raw kg float (from a single lbs->kg
+  // conversion, e.g. "15.875732950000002") is neither that unit nor rounded.
+  // Mirrors app.js's own fmtEntryWeight rounding convention (whole numbers
+  // for lbs, one decimal for kg) without depending on app.js, since
+  // generator.js/progress.js are both loaded before it.
+  function fmtDisplayWeight(state, kg) {
+    const unit = (state && state.settings && state.settings.entryUnits === 'lbs') ? 'lbs' : 'kg';
+    const raw = unit === 'lbs' ? kg / KG_PER_LB : kg;
+    const decimals = unit === 'lbs' ? 0 : 1;
+    const rounded = Math.round(raw * Math.pow(10, decimals)) / Math.pow(10, decimals);
+    return `${rounded}${unit}`;
+  }
+
   // ---------- Progressive overload: weighted / rep-based exercises ----------
   // Target band is 6-10 reps. Below it, drop weight (even next set, same session);
   // above it, add weight. Persists per-exercise so the NEXT time this move comes up
@@ -315,13 +332,14 @@ const Progress = (() => {
     if (!perf || perf.lastWeightKg == null) {
       return { suggestedKg: null, note: `First time — pick a weight you can do for ${lo}-${hi} reps with good form, then log it.` };
     }
+    const w = fmtDisplayWeight(state, perf.lastWeightKg);
     let note;
     if (perf.lastReps < lo) {
-      note = `Last time: ${perf.lastReps} reps at ${perf.lastWeightKg}kg — try a little lighter today so you can land in the ${lo}-${hi} range.`;
+      note = `Last time: ${perf.lastReps} reps at ${w} — try a little lighter today so you can land in the ${lo}-${hi} range.`;
     } else if (perf.lastReps > hi) {
-      note = `You hit ${perf.lastReps} reps at ${perf.lastWeightKg}kg last time — try a little heavier today.`;
+      note = `You hit ${perf.lastReps} reps at ${w} last time — try a little heavier today.`;
     } else {
-      note = `Last time: ${perf.lastReps} reps at ${perf.lastWeightKg}kg — aim for ${lo}-${hi} again.`;
+      note = `Last time: ${perf.lastReps} reps at ${w} — aim for ${lo}-${hi} again.`;
     }
     return { suggestedKg: perf.lastWeightKg, note };
   }
