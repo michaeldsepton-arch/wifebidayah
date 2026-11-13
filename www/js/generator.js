@@ -106,11 +106,11 @@ const Generator = (() => {
     return best;
   }
 
+  // She doesn't like the circuit/rounds format (all exercises once, then
+  // repeat for N rounds) — she wants every session to be the "sets" format:
+  // all of one exercise's sets, then move on to the next exercise entirely.
   function pickSessionType(state) {
-    const recentTypes = state.history.slice(-2).map(h => h.type);
-    const bothSame = recentTypes.length === 2 && recentTypes[0] === recentTypes[1];
-    if (bothSame) return recentTypes[0] === 'strength' ? 'circuit' : 'strength';
-    return Math.random() < 0.6 ? 'strength' : 'circuit';
+    return 'strength';
   }
 
   // Rest between sets, and the set-count range we're allowed to flex within to hit the
